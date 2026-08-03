@@ -25,6 +25,7 @@ import { initialiseRegistry } from './domain/command-registry';
 import { createCommandDefinitions } from './ipc/handlers';
 import { registerIpcGateway } from './ipc/gateway';
 import { SyncWorker } from './sync/sync-worker';
+import { timingSafeEqual } from 'crypto';
 import {
   deriveFromSecrets,
   getMachineFingerprint,
@@ -68,6 +69,12 @@ let syncWorker: SyncWorker | null = null;
  */
 let sessionKey: KeyMaterial | null = null;
 
+/**
+ * Machine-binding salt derived at startup.
+ * Used by the unlock function to re-derive the key from a user passphrase.
+ */
+let machineSalt: Buffer | null = null;
+
 // ---------------------------------------------------------------------------
 // Startup
 // ---------------------------------------------------------------------------
@@ -101,7 +108,7 @@ async function startup(): Promise<void> {
 
   // 1. Derive the machine-binding salt and encryption key.
   const appDataPath = app.getPath('userData');
-  const machineSalt = getMachineFingerprint(appDataPath);
+  machineSalt = getMachineFingerprint(appDataPath);
 
   let dbKeyHex: string | undefined;
 
@@ -141,6 +148,24 @@ async function startup(): Promise<void> {
     // Seed a device session row if this is the first run.
     seedDeviceSession(db);
 
+    // Build the unlock function — a closure that captures the machine
+    // salt and session key so the handler never sees raw key material.
+    const unlockFn = (passphrase: string): boolean => {
+      if (!machineSalt) return false;
+      try {
+        const candidate = deriveFromSecrets(passphrase, machineSalt);
+        if (!sessionKey || candidate.key.length !== sessionKey.key.length) {
+          zeroBuffer(candidate.key);
+          return false;
+        }
+        const match = timingSafeEqual(candidate.key, sessionKey.key);
+        zeroBuffer(candidate.key);
+        return match;
+      } catch {
+        return false;
+      }
+    };
+
     const definitions = createCommandDefinitions({
       db: () => {
         if (!connectionManager?.isOpen) {
@@ -150,6 +175,7 @@ async function startup(): Promise<void> {
       },
       engineState: engineState,
       syncWorker: () => syncWorker,
+      unlockFn,
       deviceId: 'poc-device-001',
       tenantId: 'poc-tenant',
       branchId: 'poc-branch',

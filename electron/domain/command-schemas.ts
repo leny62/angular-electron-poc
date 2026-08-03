@@ -179,6 +179,16 @@ const schemas: ReadonlyArray<[CommandName, JsonSchema]> = [
     },
   ],
 
+  // Engine -------------------------------------------------------------
+  [
+    'engine.health',
+    {
+      type: 'object',
+      properties: {},
+      additionalProperties: false,
+    },
+  ],
+
   // Sync ---------------------------------------------------------------
   [
     'sync.now',

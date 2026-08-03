@@ -48,15 +48,15 @@ export interface KeyMaterial {
 }
 
 // ---------------------------------------------------------------------------
-// Phase 0: plaintext → SHA-256 (development only)
+// SHA-256 fallback (development without machine binding)
 // ---------------------------------------------------------------------------
 
 /**
- * Phase 0 fallback: derive a 256-bit key from a plaintext passphrase
- * using a single SHA-256 hash.  Retained for development when no
- * machine binding is configured.
+ * Derive a 256-bit key from a plaintext passphrase using a single
+ * SHA-256 hash.  Retained for development when machine binding is
+ * not configured.
  *
- * Production paths MUST use `deriveFromSecrets()` instead.
+ * Production paths use `deriveFromSecrets()` instead.
  */
 export function deriveFromPassphrase(passphrase: string): KeyMaterial {
   const hash = require('crypto').createHash('sha256').update(passphrase, 'utf8').digest();
@@ -67,7 +67,7 @@ export function deriveFromPassphrase(passphrase: string): KeyMaterial {
 }
 
 // ---------------------------------------------------------------------------
-// Phase 2: PBKDF2 + machine binding (production)
+// PBKDF2 + machine binding (default path)
 // ---------------------------------------------------------------------------
 
 /**

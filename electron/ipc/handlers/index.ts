@@ -19,8 +19,14 @@ import { COMMAND_SCHEMAS } from '../../domain/command-schemas';
 
 import { handleSessionUnlock, handleSessionState } from './session-handlers';
 import type { SessionContext } from './session-handlers';
+import { handleEngineHealth } from './engine-handlers';
+import type { EngineContext } from './engine-handlers';
 import { handleCatalogSearch } from './catalog-handlers';
 import type { CatalogContext } from './catalog-handlers';
+import { handleStockBalance, handleStockAdjust } from './stock-handlers';
+import type { StockContext } from './stock-handlers';
+import { handleCustomerCreate, handleCustomerSearch } from './customer-handlers';
+import type { CustomerContext } from './customer-handlers';
 import { handleSaleCreate, handleSaleGet, handleSaleList } from './sale-handlers';
 import type { SaleContext } from './sale-handlers';
 
@@ -37,6 +43,8 @@ export interface HandlerContext {
   readonly tenantId: string;
   readonly branchId: string;
   readonly receiptPrefix: string;
+  /** PBKDF2 unlock function supplied by the main process. */
+  readonly unlockFn: (passphrase: string) => boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -48,15 +56,30 @@ export function createCommandDefinitions(
 ): readonly CommandDefinition[] {
   const sessionCtx: SessionContext = {
     engineState: ctx.engineState,
-    unlockFn: (_passphrase: string) => {
-      // Phase 0: accept any non-empty passphrase.
-      // Phase 2: derive key from device secret + machine binding.
-      return true;
-    },
+    unlockFn: ctx.unlockFn,
+  };
+
+  const engineCtx: EngineContext = {
+    engineState: ctx.engineState,
+    syncWorker: ctx.syncWorker,
+    databaseOpen: true,
   };
 
   const catalogCtx: CatalogContext = {
     db: ctx.db,
+    branchId: ctx.branchId,
+  };
+
+  const stockCtx: StockContext = {
+    db: ctx.db,
+    deviceId: ctx.deviceId,
+    branchId: ctx.branchId,
+  };
+
+  const customerCtx: CustomerContext = {
+    db: ctx.db,
+    deviceId: ctx.deviceId,
+    tenantId: ctx.tenantId,
     branchId: ctx.branchId,
   };
 
@@ -73,7 +96,7 @@ export function createCommandDefinitions(
   // -----------------------------------------------------------------------
 
   const RATE_FREQUENT = 120; // search, list — called often by the UI
-  const RATE_WRITE = 20; // mutations — rare but expensive
+  const RATE_WRITE = 20;    // mutations — rare but expensive
 
   // -----------------------------------------------------------------------
   // Helper: build a definition with its JSON Schema
@@ -98,7 +121,7 @@ export function createCommandDefinitions(
   };
 
   // -----------------------------------------------------------------------
-  // Sync handlers (wired to the SyncWorker when available)
+  // Sync handlers (wired to SyncWorker via lazy getter)
   // -----------------------------------------------------------------------
 
   const syncHandlers = {
@@ -160,6 +183,12 @@ export function createCommandDefinitions(
       { requiresUnlock: false, rateLimit: RATE_FREQUENT },
     ),
 
+    // Engine -------------------------------------------------------------
+    def('engine.health',
+      (payload, env) => handleEngineHealth(payload, env, engineCtx),
+      { requiresUnlock: false, rateLimit: RATE_FREQUENT },
+    ),
+
     // Catalog ------------------------------------------------------------
     def('catalog.search',
       (payload, env) => handleCatalogSearch(payload, env, catalogCtx),
@@ -168,31 +197,21 @@ export function createCommandDefinitions(
 
     // Stock --------------------------------------------------------------
     def('stock.balance',
-      (_payload, _env) => ({ items: [] }),
+      (payload, env) => handleStockBalance(payload, env, stockCtx),
       { requiresUnlock: true, rateLimit: RATE_FREQUENT },
     ),
     def('stock.adjust',
-      (_payload, _env) => {
-        throw Object.assign(
-          new Error('Stock adjustment not yet implemented.'),
-          { code: 'E_INTERNAL', retryable: false },
-        );
-      },
+      (payload, env) => handleStockAdjust(payload, env, stockCtx),
       { requiresUnlock: true, rateLimit: RATE_WRITE },
     ),
 
     // Customer -----------------------------------------------------------
     def('customer.create',
-      (_payload, _env) => {
-        throw Object.assign(
-          new Error('Customer creation not yet implemented.'),
-          { code: 'E_INTERNAL', retryable: false },
-        );
-      },
+      (payload, env) => handleCustomerCreate(payload, env, customerCtx),
       { requiresUnlock: true, rateLimit: RATE_WRITE },
     ),
     def('customer.search',
-      (_payload, _env) => ({ customers: [], total: 0 }),
+      (payload, env) => handleCustomerSearch(payload, env, customerCtx),
       { requiresUnlock: true, rateLimit: RATE_FREQUENT },
     ),
 

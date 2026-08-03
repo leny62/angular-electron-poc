@@ -6,8 +6,8 @@
  * declaration file, we define the narrow interface the PoC actually
  * uses and cast the import to it.
  *
- * Phase 2: replace with proper types from the BIZURI-Frontend shared
- * package when the shared-typings library is extracted.
+ * When this project graduates to a proper shared-typings package,
+ * replace with the canonical `@bizuri/shared` types.
  */
 
 export interface SqliteDatabase {

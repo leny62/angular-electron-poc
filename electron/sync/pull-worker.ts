@@ -8,8 +8,12 @@
  * entity type and the server returns only rows that have changed
  * since that cursor.
  *
- * Phase 2: real HTTP pull from the Bizuri API.
- * Phase 2 stub: no-op (local seed data is the source of truth).
+ * Conflict detection: before applying a pulled row, the worker checks
+ * whether a PENDING outbox entry exists for the same entity.  If one
+ * does, the local write has not been pushed yet and the remote update
+ * may conflict.  The outbox entry is marked CONFLICT and the remote
+ * version is NOT applied — the conflict must be resolved explicitly
+ * via sync.resolve.
  */
 
 import type { SqliteDatabase } from '../database/types';
@@ -114,8 +118,10 @@ function applyPullResponse(
   response: PullBatchResponse,
 ): Record<string, number> {
   const counts: Record<string, number> = {};
+  let applied = 0;
+  let conflicted = 0;
 
-  // Apply catalog item updates (upsert).
+  // Apply catalog item updates, skipping those with pending local writes.
   if (response.catalogItems.length > 0) {
     const upsert = db.prepare(`
       INSERT INTO catalog_item (item_id, branch_id, item_code, item_name, barcode,
@@ -135,23 +141,38 @@ function applyPullResponse(
         updated_at = excluded.updated_at
     `);
 
-    const runAll = db.transaction(() => {
-      for (const item of response.catalogItems) {
-        const r = item as Record<string, unknown>;
-        upsert.run(
-          r.item_id, r.branch_id, r.item_code, r.item_name,
-          r.barcode ?? null, r.selling_price, r.discount ?? '0',
-          r.tax_category_name ?? null, r.tax_category_rate ?? '0',
-          r.available_qty ?? '0', r.sell_mode ?? 'UNIT', r.updated_at,
-        );
-      }
-    });
+    for (const item of response.catalogItems) {
+      const r = item as Record<string, unknown>;
+      const itemId = r.item_id as string;
 
-    runAll();
-    counts['catalogItems'] = response.catalogItems.length;
+      // Conflict check: is there a pending local write for this catalog item?
+      if (hasPendingOutboxEntry(db, 'catalog', itemId)) {
+        flagConflict(db, 'catalog', itemId, r);
+        conflicted++;
+        continue;
+      }
+
+      upsert.run(
+        itemId, r.branch_id, r.item_code, r.item_name,
+        r.barcode ?? null, r.selling_price, r.discount ?? '0',
+        r.tax_category_name ?? null, r.tax_category_rate ?? '0',
+        r.available_qty ?? '0', r.sell_mode ?? 'UNIT', r.updated_at,
+      );
+      applied++;
+    }
+
+    counts['catalogItems'] = applied;
+    if (conflicted > 0) {
+      console.log(
+        `[sync:pull] ${conflicted} catalog items conflicted — local writes take precedence.`,
+      );
+    }
   }
 
-  // Apply customer updates (upsert).
+  applied = 0;
+  conflicted = 0;
+
+  // Apply customer updates, skipping those with pending local writes.
   if (response.customers.length > 0) {
     const upsert = db.prepare(`
       INSERT INTO customer (id, server_id, tenant_id, branch_id,
@@ -168,21 +189,32 @@ function applyPullResponse(
         updated_at = excluded.updated_at
     `);
 
-    const runAll = db.transaction(() => {
-      for (const cust of response.customers) {
-        const r = cust as Record<string, unknown>;
-        upsert.run(
-          r.id, r.server_id ?? null, r.tenant_id, r.branch_id,
-          r.customer_code ?? null, r.customer_name,
-          r.customer_tin ?? null, r.customer_phone ?? null,
-          r.customer_email ?? null, r.address ?? null,
-          r.created_at, r.updated_at,
-        );
-      }
-    });
+    for (const cust of response.customers) {
+      const r = cust as Record<string, unknown>;
+      const custId = r.id as string;
 
-    runAll();
-    counts['customers'] = response.customers.length;
+      if (hasPendingOutboxEntry(db, 'customer', custId)) {
+        flagConflict(db, 'customer', custId, r);
+        conflicted++;
+        continue;
+      }
+
+      upsert.run(
+        custId, r.server_id ?? null, r.tenant_id, r.branch_id,
+        r.customer_code ?? null, r.customer_name,
+        r.customer_tin ?? null, r.customer_phone ?? null,
+        r.customer_email ?? null, r.address ?? null,
+        r.created_at, r.updated_at,
+      );
+      applied++;
+    }
+
+    counts['customers'] = applied;
+    if (conflicted > 0) {
+      console.log(
+        `[sync:pull] ${conflicted} customers conflicted — local writes take precedence.`,
+      );
+    }
   }
 
   // Persist updated cursors.
@@ -191,6 +223,56 @@ function applyPullResponse(
   }
 
   return counts;
+}
+
+// ---------------------------------------------------------------------------
+// Conflict detection helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * True when a PENDING outbox entry exists for the given entity.
+ * A pending entry means a local write has not been pushed yet,
+ * and the remote update may conflict with it.
+ */
+function hasPendingOutboxEntry(
+  db: SqliteDatabase,
+  entity: string,
+  entityId: string,
+): boolean {
+  const row = db.prepare(`
+    SELECT COUNT(*) AS c FROM outbox
+    WHERE entity = ? AND entity_id = ? AND state = 'PENDING'
+  `).get(entity, entityId) as { c: number };
+  return row.c > 0;
+}
+
+/**
+ * Mark an outbox entry as CONFLICT because a remote update arrived
+ * for the same entity before the local write was pushed.
+ */
+function flagConflict(
+  db: SqliteDatabase,
+  entity: string,
+  entityId: string,
+  remoteRow: Record<string, unknown>,
+): void {
+  const now = new Date().toISOString();
+
+  db.prepare(`
+    UPDATE outbox
+    SET state = 'CONFLICT',
+        last_error = ?,
+        leased_until = NULL
+    WHERE entity = ? AND entity_id = ? AND state = 'PENDING'
+  `).run(
+    `Remote update arrived before local push. Remote version: ${JSON.stringify(remoteRow)}`,
+    entity,
+    entityId,
+  );
+
+  console.log(
+    `[sync:pull] CONFLICT flagged: ${entity}/${entityId} at ${now}`,
+  );
 }
 
 // ---------------------------------------------------------------------------
