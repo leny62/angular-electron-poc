@@ -4,12 +4,9 @@
  * Six gates run before a handler sees a payload.  They run in order,
  * cheap first and expensive last, and none can be skipped.
  *
- * Phase 1 implements gates 1–3:
  *   Gate 1 — sender identity (is this frame ours?)
  *   Gate 2 — command allow-list (do we know this name?)
  *   Gate 3 — envelope shape (are all required fields present and typed?)
- *
- * Gates 4–6 are stubbed for Phase 2:
  *   Gate 4 — payload schema validation against JSON Schema
  *   Gate 5 — session / permission scope
  *   Gate 6 — rate and size limiting
@@ -22,11 +19,31 @@ import type { BrowserWindow } from 'electron';
 import type {
   CommandEnvelope,
   CommandDefinition,
-  ErrorCode,
   ValidationFailure,
 } from '../shared/contracts';
-import { COMMAND_NAMES, ERROR_CODES } from '../shared/contracts';
+import { COMMAND_NAMES } from '../shared/contracts';
 import { verifySender } from '../security/sender-verification';
+import { validateSchema } from './json-schema-validator';
+import type { JsonSchema } from './json-schema-validator';
+import { COMMAND_SCHEMAS } from './command-schemas';
+import { RateLimiter } from './rate-limiter';
+import type { EngineStateMachine } from './engine-state';
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** Maximum envelope size in bytes (64 KB). */
+const MAX_ENVELOPE_SIZE = 65_536;
+
+// ---------------------------------------------------------------------------
+// Rate limiter (session lifetime)
+// ---------------------------------------------------------------------------
+
+const rateLimiter = new RateLimiter({
+  windowMs: 60_000,
+  maxCalls: 60,
+});
 
 // ---------------------------------------------------------------------------
 // Gate implementations
@@ -123,6 +140,127 @@ function gateEnvelopeShape(body: unknown): ValidationFailure | null {
   return null;
 }
 
+/**
+ * Gate 4 — Payload schema validation.
+ *
+ * Validates the payload against the JSON Schema registered for this
+ * command.  Commands without a schema pass through (no validation).
+ *
+ * Error messages are deliberately generic — the renderer sees
+ * "Schema validation failed" and the detailed path is logged to the
+ * main-process console for debugging, never sent to the client.
+ */
+function gatePayloadSchema(
+  envelope: CommandEnvelope,
+  command: CommandDefinition,
+): ValidationFailure | null {
+  const schema: JsonSchema | undefined =
+    command.schema ?? COMMAND_SCHEMAS.get(envelope.name);
+
+  if (!schema) {
+    return null; // no schema means no validation
+  }
+
+  const payload = envelope.payload ?? {};
+  const errors = validateSchema(payload, schema);
+
+  if (errors.length > 0) {
+    // Log details server-side for debugging; never expose paths to the renderer.
+    console.warn(
+      `[gate:4] Schema validation failed for "${envelope.name}":`,
+      errors.map((e) => `${e.path}: ${e.message}`).join('; '),
+    );
+
+    return {
+      code: 'E_SCHEMA',
+      message: 'Schema validation failed.',
+      retryable: false,
+      details: {
+        errorCount: errors.length,
+        // Only surface the first path, sanitised.
+        hint: sanitisePath(errors[0].path),
+      },
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Gate 5 — Session / permission scope.
+ *
+ * Rejects commands that require an unlocked vault when the engine is
+ * in a locked or fatal state.  Commands with `requiresUnlock: false`
+ * always pass this gate regardless of engine state.
+ */
+function gateSessionScope(
+  command: CommandDefinition,
+  engineState: EngineStateMachine,
+): ValidationFailure | null {
+  if (command.requiresUnlock !== true) {
+    return null;
+  }
+
+  const blockedStates: readonly string[] = ['LOCKED', 'FATAL'];
+  if (blockedStates.includes(engineState.state)) {
+    return {
+      code: 'E_LOCKED',
+      message: `Engine is ${engineState.state}. Vault must be unlocked to execute this command.`,
+      retryable: false,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Gate 6 — Rate and size limiting.
+ *
+ *   a. Envelope size: rejects payloads larger than MAX_ENVELOPE_SIZE.
+ *   b. Rate limiting: rejects calls that exceed the per-command rate.
+ *
+ * Size check runs first because it is cheaper (JSON.stringify on the
+ * raw body) and protects the rate-limiter data structures from
+ * oversized input.
+ */
+function gateRateAndSizeLimit(
+  rawBody: unknown,
+  command: CommandDefinition,
+): ValidationFailure | null {
+  // 6a — size limit
+  try {
+    const size = JSON.stringify(rawBody).length;
+    if (size > MAX_ENVELOPE_SIZE) {
+      return {
+        code: 'E_RATE_LIMIT',
+        message: `Envelope exceeds maximum size of ${MAX_ENVELOPE_SIZE} bytes.`,
+        retryable: false,
+        details: { size, limit: MAX_ENVELOPE_SIZE },
+      };
+    }
+  } catch {
+    return {
+      code: 'E_ENVELOPE',
+      message: 'Unable to serialise envelope.',
+      retryable: false,
+    };
+  }
+
+  // 6b — rate limit
+  const effectiveRateLimit = command.rateLimit;
+  const result = rateLimiter.check(command.name, effectiveRateLimit);
+
+  if (!result.allowed) {
+    return {
+      code: 'E_RATE_LIMIT',
+      message: result.reason ?? 'Rate limit exceeded.',
+      retryable: true,
+    };
+  }
+
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Pipeline runner
 // ---------------------------------------------------------------------------
@@ -131,6 +269,7 @@ export interface ValidationContext {
   readonly event: IpcMainInvokeEvent;
   readonly mainWindow: BrowserWindow;
   readonly allowedOrigin: string;
+  readonly engineState: EngineStateMachine;
 }
 
 export interface ValidationResult {
@@ -147,9 +286,13 @@ export interface ValidationResult {
 /**
  * Run the full validation pipeline against a raw IPC payload.
  *
- * Gates 1–3 run in Phase 1.  Gates 4–6 are stubbed (no-op) and will
- * be activated in Phase 2 when JSON Schema compilation and session
- * management are integrated.
+ * Gates run cheapest-first.  Each gate returns either `null` (pass)
+ * or a `ValidationFailure` (stop).  The pipeline short-circuits on
+ * the first failure.
+ *
+ * IMPORTANT: This function depends on a rate-limiter singleton.
+ * It is NOT pure, but the side effects (rate-limit counters) are
+ * confined, deterministic, and the same across all callers.
  */
 export function validateCommand(
   rawBody: unknown,
@@ -191,10 +334,18 @@ export function validateCommand(
     };
   }
 
-  // Gates 4–6 (Phase 2 stubs — pass through)
-  // TODO(Phase 2): JSON Schema validation
-  // TODO(Phase 2): Session / permission scope
-  // TODO(Phase 2): Rate and size limiting
+  // Gate 4 — payload schema validation
+  const schemaFailure = gatePayloadSchema(envelope, command);
+  if (schemaFailure) return { valid: false, failure: schemaFailure };
+
+  // Gate 5 — session / permission scope
+  const sessionFailure = gateSessionScope(command, context.engineState);
+  if (sessionFailure) return { valid: false, failure: sessionFailure };
+
+  // Gate 6 — rate and size limiting (must run AFTER gate 4 so schema
+  // validation rejects malformed payloads before we count a call).
+  const rateFailure = gateRateAndSizeLimit(rawBody, command);
+  if (rateFailure) return { valid: false, failure: rateFailure };
 
   return { valid: true, envelope, command };
 }
@@ -216,4 +367,16 @@ export function buildErrorResponse(
     retryable: failure.retryable,
     details: failure.details,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Strip payload paths of internal detail before surfacing to the renderer.
+ * Example: "$.items[0].itemId" → "items[0].itemId"
+ */
+function sanitisePath(path: string): string {
+  return path.startsWith('$.') ? path.slice(2) : path;
 }

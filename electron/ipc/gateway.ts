@@ -57,9 +57,13 @@ export function registerIpcGateway(config: GatewayConfig): () => void {
       event: _event,
       mainWindow,
       allowedOrigin,
+      engineState,
     };
 
-    // --- Validation pipeline (gates 1–3 in Phase 1) ---
+    // --- Validation pipeline (gates 1–6) ---
+    // Gate 4: JSON Schema validation
+    // Gate 5: Session / permission scope
+    // Gate 6: Rate and size limiting
     const result: ValidationResult = validateCommand(rawBody, ctx, findCommand);
 
     if (!result.valid) {
@@ -70,7 +74,10 @@ export function registerIpcGateway(config: GatewayConfig): () => void {
     const envelope = result.envelope!;
     const command = result.command!;
 
-    // --- Engine state check (gate 5 lite) ---
+    // --- Engine lifecycle check (DRAINING edge case) ---
+    // Gate 5 covers LOCKED/FATAL via requiresUnlock.  This check
+    // catches the DRAINING state where writes are rejected but reads
+    // are still permitted.
     if (!engineState.isCommandAllowed(envelope.name)) {
       return buildErrorResponse(
         {

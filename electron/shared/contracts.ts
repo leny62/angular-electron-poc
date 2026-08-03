@@ -15,6 +15,7 @@
 export const COMMAND_NAMES = [
   'session.unlock',
   'session.state',
+  'engine.health',
   'catalog.search',
   'stock.balance',
   'stock.adjust',

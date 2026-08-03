@@ -2,11 +2,13 @@
  * Electron main process entry point.
  *
  * Startup order (Section 9.1):
- *   1. Open / migrate the encrypted SQLite database.
- *   2. Initialise the command registry (frozen before window opens).
- *   3. Create the BrowserWindow with secure defaults.
- *   4. Register the IPC gateway.
- *   5. Load the Angular application.
+ *   1. Derive machine-binding salt and encryption key.
+ *   2. Open / migrate the encrypted SQLite database.
+ *   3. Initialise the command registry (frozen before window opens).
+ *   4. Create the BrowserWindow with secure defaults.
+ *   5. Start the sync worker (outbox push/pull on interval).
+ *   6. Register the IPC gateway.
+ *   7. Load the Angular application.
  *
  * The database is opened BEFORE the window so the renderer can never
  * issue a command against a half-migrated schema.  If migration fails
@@ -22,6 +24,15 @@ import { EngineStateMachine } from './domain/engine-state';
 import { initialiseRegistry } from './domain/command-registry';
 import { createCommandDefinitions } from './ipc/handlers';
 import { registerIpcGateway } from './ipc/gateway';
+import { SyncWorker } from './sync/sync-worker';
+import { timingSafeEqual } from 'crypto';
+import {
+  deriveFromSecrets,
+  getMachineFingerprint,
+  zeroBuffer,
+  keyToHex,
+  type KeyMaterial,
+} from './security/key-derivation';
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -29,10 +40,18 @@ import { registerIpcGateway } from './ipc/gateway';
 
 const ALLOWED_ORIGIN = 'http://localhost:4200'; // dev server origin
 
-// Phase 0: no encryption (prove IPC pipeline first).
-// Phase 2: 'bizuri-poc-dev-key-2026' → PBKDF2 derivation from
-// device secret + machine binding.
-const DEV_PASSPHRASE: string | undefined = undefined;
+/**
+ * Development passphrase.
+ *
+ * Set to a non-empty string to enable database encryption.
+ * The passphrase is combined with a machine-binding salt via
+ * PBKDF2-HMAC-SHA256 (600 000 iterations) to produce the
+ * 256-bit AES key for SQLCipher.
+ *
+ * Production: passphrase comes from user input (session.unlock),
+ * never from a compile-time constant.
+ */
+const DEV_PASSPHRASE = 'bizuri-poc-dev-key-2026';
 
 // ---------------------------------------------------------------------------
 // Globals (session lifetime)
@@ -42,6 +61,19 @@ let mainWindow: BrowserWindow | null = null;
 let connectionManager: ConnectionManager | null = null;
 let engineState: EngineStateMachine | null = null;
 let unregisterIpc: (() => void) | null = null;
+let syncWorker: SyncWorker | null = null;
+
+/**
+ * The derived key material, held in main-process memory for the session.
+ * Zeroed on shutdown.  Never exposed to the renderer.
+ */
+let sessionKey: KeyMaterial | null = null;
+
+/**
+ * Machine-binding salt derived at startup.
+ * Used by the unlock function to re-derive the key from a user passphrase.
+ */
+let machineSalt: Buffer | null = null;
 
 // ---------------------------------------------------------------------------
 // Startup
@@ -74,30 +106,65 @@ app.on('before-quit', () => {
 async function startup(): Promise<void> {
   engineState = new EngineStateMachine();
 
-  // 1. Open and migrate the database.
-  const dbDir = app.getPath('userData');
-  const dbPath = join(dbDir, 'bizuri-poc.db');
+  // 1. Derive the machine-binding salt and encryption key.
+  const appDataPath = app.getPath('userData');
+  machineSalt = getMachineFingerprint(appDataPath);
+
+  let dbKeyHex: string | undefined;
+
+  if (DEV_PASSPHRASE) {
+    sessionKey = deriveFromSecrets(DEV_PASSPHRASE, machineSalt);
+    dbKeyHex = keyToHex(sessionKey.key);
+    console.log(
+      `[main] Key derived: PBKDF2-HMAC-SHA256, 600k iter, source=${sessionKey.source}`,
+    );
+  } else {
+    console.log('[main] No passphrase configured — database will be unencrypted.');
+  }
+
+  // 2. Open and migrate the database.
+  const dbPath = join(appDataPath, 'bizuri-poc.db');
 
   connectionManager = new ConnectionManager({
     dbPath,
-    passphrase: DEV_PASSPHRASE,
+    passphrase: dbKeyHex,
   });
 
   try {
     connectionManager.open();
     console.log(`[main] Database opened: ${dbPath}`);
+    // Database opened successfully with the derived key.
+    // Engine starts LOCKED; user must call session.unlock to enter READY.
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[main] Database open failed: ${message}`);
     engineState.markFatal(`Database initialisation failed: ${message}`);
   }
 
-  // 2. Initialise the command registry (frozen).
+  // 3. Initialise the command registry (frozen).
   if (engineState.state !== 'FATAL') {
     const db = connectionManager!.get();
 
     // Seed a device session row if this is the first run.
     seedDeviceSession(db);
+
+    // Build the unlock function — a closure that captures the machine
+    // salt and session key so the handler never sees raw key material.
+    const unlockFn = (passphrase: string): boolean => {
+      if (!machineSalt) return false;
+      try {
+        const candidate = deriveFromSecrets(passphrase, machineSalt);
+        if (!sessionKey || candidate.key.length !== sessionKey.key.length) {
+          zeroBuffer(candidate.key);
+          return false;
+        }
+        const match = timingSafeEqual(candidate.key, sessionKey.key);
+        zeroBuffer(candidate.key);
+        return match;
+      } catch {
+        return false;
+      }
+    };
 
     const definitions = createCommandDefinitions({
       db: () => {
@@ -107,6 +174,8 @@ async function startup(): Promise<void> {
         return connectionManager.get();
       },
       engineState: engineState,
+      syncWorker: () => syncWorker,
+      unlockFn,
       deviceId: 'poc-device-001',
       tenantId: 'poc-tenant',
       branchId: 'poc-branch',
@@ -117,10 +186,29 @@ async function startup(): Promise<void> {
     console.log(`[main] Command registry initialised with ${definitions.length} commands.`);
   }
 
-  // 3. Create the window.
+  // 4. Create the window.
   createWindow();
 
-  // 4. Register the IPC gateway.
+  // 5. Start the sync worker.
+  syncWorker = new SyncWorker({
+    intervalMs: 30_000,
+    maxConsecutiveFailures: 5,
+    db: () => {
+      if (!connectionManager?.isOpen) {
+        throw new Error('Database connection lost.');
+      }
+      return connectionManager.get();
+    },
+    engineState: engineState,
+    mainWindow: mainWindow!,
+    deviceId: 'poc-device-001',
+    tenantId: 'poc-tenant',
+    branchId: 'poc-branch',
+  });
+  syncWorker.start();
+  console.log('[main] Sync worker started.');
+
+  // 6. Register the IPC gateway.
   unregisterIpc = registerIpcGateway({
     mainWindow: mainWindow!,
     allowedOrigin: ALLOWED_ORIGIN,
@@ -166,6 +254,12 @@ function createWindow(): void {
 // ---------------------------------------------------------------------------
 
 function shutdown(): void {
+  if (syncWorker) {
+    syncWorker.stop();
+    syncWorker = null;
+    console.log('[main] Sync worker stopped.');
+  }
+
   if (engineState) {
     engineState.markDraining();
   }
@@ -178,6 +272,13 @@ function shutdown(): void {
   if (connectionManager) {
     connectionManager.close();
     console.log('[main] Database closed.');
+  }
+
+  // Zero the derived key from memory.
+  if (sessionKey) {
+    zeroBuffer(sessionKey.key);
+    sessionKey = null;
+    console.log('[main] Session key zeroed.');
   }
 }
 
