@@ -16,8 +16,6 @@
  *
  * The derived key lives in main-process memory for the session and is
  * zeroed on shutdown.  It never crosses the bridge into the renderer.
- *
- * @see docs/Bizuri-Secure-IPC-Offline-Design.docx  Section 5.4
  */
 
 import { pbkdf2Sync, randomBytes } from 'crypto';

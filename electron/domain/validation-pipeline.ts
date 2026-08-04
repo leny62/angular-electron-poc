@@ -10,8 +10,6 @@
  *   Gate 4 — payload schema validation against JSON Schema
  *   Gate 5 — session / permission scope
  *   Gate 6 — rate and size limiting
- *
- * @see docs/Bizuri-Secure-IPC-Offline-Design.docx  Section 5.6
  */
 
 import type { IpcMainInvokeEvent } from 'electron';

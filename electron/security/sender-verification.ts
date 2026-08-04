@@ -6,8 +6,6 @@
  * BrowserWindow and that the frame's origin matches the application
  * origin.  This stops commands arriving from iframes, webviews,
  * devtools consoles, or secondary windows.
- *
- * @see docs/Bizuri-Secure-IPC-Offline-Design.docx  Section 5.6
  */
 
 import { BrowserWindow, type IpcMainInvokeEvent } from 'electron';

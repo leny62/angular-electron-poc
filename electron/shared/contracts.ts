@@ -8,8 +8,6 @@
  * The Angular side imports from:
  *   src/app/core/interfaces/local-bridge.interface.ts
  * which re-exports from the same canonical source.
- *
- * @see docs/Bizuri-Secure-IPC-Offline-Design.docx  Appendix A
  */
 
 export const COMMAND_NAMES = [

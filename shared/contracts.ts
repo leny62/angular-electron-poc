@@ -5,8 +5,6 @@
  * crosses the Electron main-process ↔ Angular renderer boundary.
  *
  * Compiled into both sides.  Never edited independently.
- *
- * @see docs/Bizuri-Secure-IPC-Offline-Design.docx  Appendix A
  */
 
 // ---------------------------------------------------------------------------

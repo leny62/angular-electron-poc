@@ -1,7 +1,7 @@
 /**
  * Electron main process entry point.
  *
- * Startup order (Section 9.1):
+ * Startup order:
  *   1. Derive machine-binding salt and encryption key.
  *   2. Open / migrate the encrypted SQLite database.
  *   3. Initialise the command registry (frozen before window opens).
@@ -19,13 +19,13 @@
 
 import { app, BrowserWindow } from 'electron';
 import { join } from 'path';
+import { timingSafeEqual } from 'crypto';
 import { ConnectionManager } from './database/connection';
 import { EngineStateMachine } from './domain/engine-state';
 import { initialiseRegistry } from './domain/command-registry';
 import { createCommandDefinitions } from './ipc/handlers';
 import { registerIpcGateway } from './ipc/gateway';
 import { SyncWorker } from './sync/sync-worker';
-import { timingSafeEqual } from 'crypto';
 import {
   deriveFromSecrets,
   getMachineFingerprint,
@@ -33,6 +33,11 @@ import {
   keyToHex,
   type KeyMaterial,
 } from './security/key-derivation';
+import {
+  createCredentialStore,
+  getOrCreateSalt,
+  type CredentialStore,
+} from './security/credential-store';
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -106,9 +111,30 @@ app.on('before-quit', () => {
 async function startup(): Promise<void> {
   engineState = new EngineStateMachine();
 
-  // 1. Derive the machine-binding salt and encryption key.
+  // 1. Obtain a machine-binding salt.
+  //    First attempt: read a persistent random salt from the OS
+  //    credential store (Keychain on macOS, libsecret on Linux,
+  //    Credential Manager on Windows).  On first run a new salt is
+  //    generated and stored.
+  //
+  //    Fallback: if the credential store is unavailable, derive a
+  //    deterministic salt from the machine fingerprint and app data
+  //    path.  This is less secure (the salt is predictable) but
+  //    ensures the app still works.
   const appDataPath = app.getPath('userData');
-  machineSalt = getMachineFingerprint(appDataPath);
+
+  let saltSource = 'fingerprint';
+  try {
+    const store: CredentialStore = createCredentialStore();
+    machineSalt = getOrCreateSalt(store);
+    saltSource = 'credential-store';
+    console.log('[main] Machine salt loaded from OS credential store.');
+  } catch (err) {
+    machineSalt = getMachineFingerprint(appDataPath);
+    console.warn(
+      `[main] Credential store unavailable (${err instanceof Error ? err.message : String(err)}), using fingerprint-derived salt.`,
+    );
+  }
 
   let dbKeyHex: string | undefined;
 
@@ -116,7 +142,7 @@ async function startup(): Promise<void> {
     sessionKey = deriveFromSecrets(DEV_PASSPHRASE, machineSalt);
     dbKeyHex = keyToHex(sessionKey.key);
     console.log(
-      `[main] Key derived: PBKDF2-HMAC-SHA256, 600k iter, source=${sessionKey.source}`,
+      `[main] Key derived: PBKDF2-HMAC-SHA256, 600k iter, source=${sessionKey.source}, salt=${saltSource}`,
     );
   } else {
     console.log('[main] No passphrase configured — database will be unencrypted.');
@@ -138,6 +164,12 @@ async function startup(): Promise<void> {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[main] Database open failed: ${message}`);
+    console.error(`[main] Database path: ${dbPath}`);
+    console.error(
+      '[main] If the passphrase or the machine salt changed since this file ' +
+        'was created, the existing database cannot be decrypted. Delete the ' +
+        'file above to start from a fresh encrypted database.',
+    );
     engineState.markFatal(`Database initialisation failed: ${message}`);
   }
 
@@ -189,8 +221,9 @@ async function startup(): Promise<void> {
   // 4. Create the window.
   createWindow();
 
-  // 5. Start the sync worker.
-  syncWorker = new SyncWorker({
+  // 5. Start the sync worker (skip when FATAL — DB didn't open).
+  if (engineState.state !== 'FATAL') {
+    syncWorker = new SyncWorker({
     intervalMs: 30_000,
     maxConsecutiveFailures: 5,
     db: () => {
@@ -205,8 +238,9 @@ async function startup(): Promise<void> {
     tenantId: 'poc-tenant',
     branchId: 'poc-branch',
   });
-  syncWorker.start();
-  console.log('[main] Sync worker started.');
+    syncWorker.start();
+    console.log('[main] Sync worker started.');
+  }
 
   // 6. Register the IPC gateway.
   unregisterIpc = registerIpcGateway({

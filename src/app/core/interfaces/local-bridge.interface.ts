@@ -3,8 +3,6 @@
  *
  * Do NOT edit types here.  The single source of truth is
  *   ../../../../../shared/contracts.ts
- *
- * @see docs/Bizuri-Secure-IPC-Offline-Design.docx  Appendix A
  */
 
 export {

@@ -25,8 +25,6 @@
  * SOLID: Single Responsibility — this service is only about routing
  * decisions.  It delegates actual work to HttpApiService or
  * LocalBridgeService.
- *
- * @see docs/Bizuri-Secure-IPC-Offline-Design.docx  Section 4.2, Figure 2
  */
 
 import { Injectable, NgZone, OnDestroy } from '@angular/core';
