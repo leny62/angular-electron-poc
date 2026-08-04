@@ -189,10 +189,14 @@ function checkType(value: unknown, type: JsonSchemaType): boolean {
   switch (type) {
     case 'null':
       return value === null;
+    case 'array':
+      return Array.isArray(value);
     case 'integer':
       return typeof value === 'number' && Number.isInteger(value);
     case 'number':
       return typeof value === 'number';
+    case 'object':
+      return typeof value === 'object' && value !== null && !Array.isArray(value);
     default:
       return typeof value === type;
   }
