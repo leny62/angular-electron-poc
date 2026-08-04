@@ -1,0 +1,98 @@
+.unlock-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+  background: linear-gradient(135deg, #F7F4F1 0%, #EDE7E3 50%, rgba(130,192,204,0.12) 100%);
+}
+
+.unlock-card {
+  width: 100%;
+  max-width: 400px;
+  padding: 40px 32px;
+  border-radius: 12px;
+  border: 1px solid var(--brand-border);
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(15,23,42,0.06), 0 16px 38px rgba(15,23,42,0.08);
+  text-align: center;
+}
+
+.unlock-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--brand-soft);
+  color: var(--brand-dark);
+  margin-bottom: 16px;
+}
+
+h1 {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--brand-dark);
+  letter-spacing: -0.3px;
+}
+
+.unlock-subtitle {
+  color: var(--brand-muted);
+  font-size: 13px;
+  margin: 4px 0 24px;
+}
+
+.unlock-form { text-align: left; }
+
+label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--brand-dark);
+  margin-bottom: 6px;
+}
+
+.unlock-form input {
+  margin-bottom: 12px;
+  font-size: 15px;
+  padding: 12px 14px;
+}
+
+.btn-primary {
+  width: 100%;
+  padding: 12px 24px;
+  background: var(--brand-dark);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  border-radius: 8px;
+}
+.btn-primary:hover:not(:disabled) { background: #125563; }
+
+.unlock-error {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: rgba(220,38,38,0.08);
+  color: var(--color-danger);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.unlock-hint {
+  margin-top: 20px;
+  font-size: 11px;
+  color: var(--brand-muted);
+}
+
+.unlock-hint code {
+  background: var(--brand-soft);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--brand-dark);
+}

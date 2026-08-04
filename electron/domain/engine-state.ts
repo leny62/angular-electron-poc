@@ -12,8 +12,6 @@
  *
  * State transitions are synchronous and intentional.  There is no
  * automatic recovery from FATAL.
- *
- * @see docs/Bizuri-Secure-IPC-Offline-Design.docx  Section 9.2
  */
 
 import type { EngineState } from '../shared/contracts';

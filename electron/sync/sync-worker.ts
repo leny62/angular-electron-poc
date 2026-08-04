@@ -16,8 +16,6 @@
  * The worker is resilient: transient failures are logged but don't
  * stop the interval.  Consecutive failures above a threshold
  * transition the engine to DEGRADED.
- *
- * @see docs/Bizuri-Secure-IPC-Offline-Design.docx  Section 7
  */
 
 import type { BrowserWindow } from 'electron';

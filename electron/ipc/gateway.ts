@@ -13,15 +13,13 @@
  *
  * It does NOT know about specific commands, database tables, or
  * business rules.  Those live behind the CommandDefinition interface.
- *
- * @see docs/Bizuri-Secure-IPC-Offline-Design.docx  Section 5
  */
 
 import { ipcMain, type BrowserWindow } from 'electron';
 import type { CommandDefinition, CommandEnvelope, CommandOk, CommandErr } from '../shared/contracts';
 import { validateCommand, buildErrorResponse } from '../domain/validation-pipeline';
 import type { ValidationContext, ValidationResult } from '../domain/validation-pipeline';
-import { findCommand } from '../domain/command-registry';
+import { findCommand, isRegistryInitialised } from '../domain/command-registry';
 import type { EngineStateMachine } from '../domain/engine-state';
 
 // ---------------------------------------------------------------------------
@@ -53,6 +51,20 @@ export function registerIpcGateway(config: GatewayConfig): () => void {
     _event: Electron.IpcMainInvokeEvent,
     rawBody: unknown,
   ): Promise<CommandErr | CommandOk<unknown>> => {
+    // Guard: reject all commands when the registry was never initialised
+    // (engine started in FATAL state after DB migration failure).
+    if (!isRegistryInitialised()) {
+      const envelope = rawBody as { id?: string } | null | undefined;
+      return buildErrorResponse(
+        {
+          code: 'E_INTERNAL',
+          message: 'Engine is not initialised. Restart the application.',
+          retryable: false,
+        },
+        envelope?.id,
+      );
+    }
+
     const ctx: ValidationContext = {
       event: _event,
       mainWindow,
@@ -61,9 +73,6 @@ export function registerIpcGateway(config: GatewayConfig): () => void {
     };
 
     // --- Validation pipeline (gates 1–6) ---
-    // Gate 4: JSON Schema validation
-    // Gate 5: Session / permission scope
-    // Gate 6: Rate and size limiting
     const result: ValidationResult = validateCommand(rawBody, ctx, findCommand);
 
     if (!result.valid) {

@@ -16,8 +16,6 @@
  * SOLID: Single Responsibility — this service is only about HTTP
  * transport.  It does not decide when to use HTTP (that's
  * TransportRouter) and it does not know about business entities.
- *
- * @see docs/Bizuri-Secure-IPC-Offline-Design.docx  Section 4.2
  */
 
 import { Injectable } from '@angular/core';
