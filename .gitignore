@@ -46,6 +46,7 @@ Thumbs.db
 packages/*/dist/
 
 # Local credentials for the live smoke test. NEVER commit.
+.env
 .env.local
 .env.*.local
 
