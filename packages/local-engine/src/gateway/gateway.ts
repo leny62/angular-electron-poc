@@ -29,7 +29,10 @@ import {
   type OperationHandler,
 } from '../contracts';
 import type { EngineStateMachine } from '../domain/engine-state';
+import { getLogger, withLogContext } from '../logging/logger';
 import { buildErrorResponse, validateRequest, type ValidationContext } from './validation-pipeline';
+
+const log = getLogger('gateway');
 
 // ---------------------------------------------------------------------------
 // Operation registry
@@ -41,6 +44,20 @@ import { buildErrorResponse, validateRequest, type ValidationContext } from './v
 // ---------------------------------------------------------------------------
 
 let registry: ReadonlyMap<string, OperationDefinition> | null = null;
+
+/**
+ * Operations that must not produce a request log line of their own.
+ *
+ * The viewer polls `listSystemLogs`, so logging that call writes a row that the
+ * next poll reads and logs again. `writeSystemLogs` is worse: it would record
+ * the act of recording.
+ */
+const SELF_LOGGING_OPERATIONS: ReadonlySet<string> = new Set([
+  'listSystemLogs',
+  'writeSystemLogs',
+  // Polled by the status bar several times a minute and says nothing useful.
+  'engineStatus',
+]);
 
 export interface RegistryEntry {
   readonly operationId: string;
@@ -121,6 +138,7 @@ export function registerGateway(config: GatewayConfig): () => void {
     // engine failed to start and every request must be refused rather than
     // silently doing nothing.
     if (!registry) {
+      log.error('Request refused: engine not initialised', undefined, { requestId });
       return buildErrorResponse(
         {
           code: 'E_INTERNAL',
@@ -135,31 +153,77 @@ export function registerGateway(config: GatewayConfig): () => void {
     const outcome = validateRequest(raw, ctx);
 
     if (!outcome.valid) {
+      // A rejected request never reaches a handler, so this is the only place
+      // it is ever recorded. Gate failures are the highest-value line in the
+      // table: they are how a renderer bug looks from the engine's side.
+      log.warn(`Rejected ${readOperationId(raw) ?? 'unknown operation'}`, {
+        requestId,
+        code: outcome.failure.code,
+        url: readOperationId(raw) ?? null,
+        context: { retryable: outcome.failure.retryable, ...outcome.failure.details },
+      });
       return buildErrorResponse(outcome.failure, requestId);
     }
 
-    const definition = registry.get(outcome.request.operationId);
+    const { request } = outcome;
+    const definition = registry.get(request.operationId);
     if (!definition) {
+      log.error('Operation has no handler', undefined, {
+        requestId,
+        url: request.operationId,
+        code: 'E_INTERNAL',
+      });
       return buildErrorResponse(
         { code: 'E_INTERNAL', message: 'Operation is not configured.', retryable: false },
         requestId,
       );
     }
 
-    try {
-      const result = await Promise.resolve(definition.handler(outcome.ctx));
-      const ok: LocalOk = {
-        v: ENVELOPE_VERSION,
-        id: outcome.request.id,
-        ok: true,
-        status: result.status,
-        data: result.data,
-        ...(result.durableAt ? { durableAt: result.durableAt } : {}),
-      };
-      return ok;
-    } catch (err) {
-      return shapeHandlerError(err, outcome.request);
-    }
+    // The log operations are excluded from request logging. The viewer polls
+    // `listSystemLogs`, and a poll that writes a row is a table that fills with
+    // records of itself being read.
+    const traced = !SELF_LOGGING_OPERATIONS.has(request.operationId);
+    const started = Date.now();
+
+    // Ambient context, so an entry written deep inside a handler still carries
+    // the request id without the handler being passed one.
+    return withLogContext(
+      {
+        requestId: request.id,
+        url: request.operationId,
+        ...(outcome.ctx.tenantId ? { tenantId: outcome.ctx.tenantId } : {}),
+        thread: 'main',
+      },
+      async () => {
+        try {
+          const result = await Promise.resolve(definition.handler(outcome.ctx));
+
+          if (traced) {
+            log.debug(`${request.method} ${request.operationId}`, {
+              code: result.status,
+              context: { durationMs: Date.now() - started },
+            });
+          }
+
+          const ok: LocalOk = {
+            v: ENVELOPE_VERSION,
+            id: request.id,
+            ok: true,
+            status: result.status,
+            data: result.data,
+            ...(result.durableAt ? { durableAt: result.durableAt } : {}),
+          };
+          return ok;
+        } catch (err) {
+          const shaped = shapeHandlerError(err, request);
+          log.error(`Failed ${request.operationId}`, err, {
+            code: shaped.code,
+            context: { durationMs: Date.now() - started, status: shaped.status },
+          });
+          return shaped;
+        }
+      },
+    );
   };
 
   ipcMain.handle(REQUEST_CHANNEL, handler);
@@ -203,6 +267,14 @@ function readRequestId(raw: unknown): string | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined;
   const id = (raw as Record<string, unknown>)['id'];
   return typeof id === 'string' ? id : undefined;
+}
+
+function readOperationId(raw: unknown): string | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const value = (raw as Record<string, unknown>)['operationId'];
+  // Bounded: this string reaches the log table, and gate 2 rejected it precisely
+  // because it is not one of ours, so nothing about it can be assumed.
+  return typeof value === 'string' ? value.slice(0, 80) : undefined;
 }
 
 function shapeHandlerError(err: unknown, request: LocalRequest): LocalErr {

@@ -23,6 +23,15 @@
 // The schema language the generator emits (types only).
 export type { JsonSchema, JsonSchemaType } from './json-schema';
 
+// Diagnostic vocabulary, shared by the DDL, the gate-4 schemas, and the viewer.
+export type { LogComponent, LogLevel, LogSource } from './log-vocabulary';
+export {
+  LOG_COMPONENTS,
+  LOG_LEVEL_RANK,
+  LOG_LEVELS,
+  LOG_SOURCES,
+} from './log-vocabulary';
+
 // Descriptor types: the generator's output contract.
 export type {
   ColumnDescriptor,
@@ -49,6 +58,7 @@ export {
   SALES_CATALOG,
   STOCK_BALANCES,
   SYNC_CURSOR,
+  SYSTEM_LOGS,
   TABLES,
   TABLES_BY_NAME,
   TAX_CATEGORIES,
@@ -74,6 +84,7 @@ export type {
   StockBalanceRow,
   SyncCursorRow,
   SyncState,
+  SystemLogRow,
   TaxCategoryRow,
 } from './rows';
 
@@ -86,6 +97,7 @@ export type {
   SalePaymentDto,
   SalesCatalogItemDto,
   StockBalanceDto,
+  SystemLogDto,
   TaxCategoryDto,
 } from './mappers';
 export {
@@ -96,6 +108,7 @@ export {
   rowToSalePayment,
   rowToSalesCatalogItem,
   rowToStockBalance,
+  rowToSystemLog,
   rowToTaxCategory,
   salesCatalogItemToRow,
   stockBalanceToRow,

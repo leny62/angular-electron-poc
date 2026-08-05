@@ -34,6 +34,13 @@ import {
   type SqliteDatabase,
 } from '@bizuri/local-engine';
 
+/** What `createSale` returns in `.data`: the same envelope the real API sends. */
+interface SaleEnvelope {
+  success: boolean;
+  message: string;
+  data: { id: string; saleNumber: string; grandTotal: number };
+}
+
 const PORT = Number(process.env['E2E_PORT'] ?? 4300);
 const BASE = `http://localhost:${PORT}`;
 const SALE_COUNT = Number(process.env['E2E_SALES'] ?? 12);
@@ -183,9 +190,18 @@ async function main(): Promise<number> {
         tenantId: scope.tenantId,
         branchId: scope.branchId,
         idempotencyKey: `e2e-key-${i}`,
-      }).data;
-      localIds.push(sale.id);
+      }).data as SaleEnvelope;
+
+      // `.data` is the API envelope, not the sale. Reading the sale straight
+      // off it silently yields undefined, which is exactly the bug that reached
+      // the POS as "Sale undefined committed locally".
+      localIds.push(sale.data.id);
     }
+
+    expect(
+      localIds.every((id) => typeof id === 'string' && id.length > 0),
+      'every sale came back with an id',
+    );
 
     ok(`${SALE_COUNT} sales committed locally in ${Date.now() - started}ms`);
 

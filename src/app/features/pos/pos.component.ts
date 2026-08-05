@@ -2,7 +2,8 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
-import { LocalEngineService } from '@bizuri/offline-http';
+import { LocalEngineService, LoggingService } from '@bizuri/offline-http';
+import { LogsComponent } from '../logs/logs.component';
 import { UnlockComponent } from '../unlock/unlock.component';
 
 /**
@@ -41,15 +42,16 @@ interface SaleDto {
 @Component({
   selector: 'app-pos',
   standalone: true,
-  imports: [CommonModule, FormsModule, UnlockComponent],
+  imports: [CommonModule, FormsModule, UnlockComponent, LogsComponent],
   templateUrl: './pos.component.html',
   styleUrl: './pos.component.css',
 })
 export class PosComponent {
   private readonly http = inject(HttpClient);
+  private readonly log = inject(LoggingService).getLogger('pos.component');
   readonly engine = inject(LocalEngineService);
 
-  readonly tab = signal<'sell' | 'sales' | 'sync'>('sell');
+  readonly tab = signal<'sell' | 'sales' | 'sync' | 'logs'>('sell');
   readonly search = signal('');
   readonly catalog = signal<CatalogItem[]>([]);
   readonly cart = signal<CartLine[]>([]);
@@ -149,9 +151,30 @@ export class PosComponent {
         .toPromise();
 
       const sale = res?.data;
+
+      // A confirmation that reads "Sale undefined committed locally for
+      // undefined" is worse than an error: the cashier is told the sale worked
+      // and given nothing to write on the receipt. If the response is not the
+      // shape we expect, say so and log the envelope we actually got, rather
+      // than interpolating undefined into a reassuring sentence.
+      if (!sale?.saleNumber) {
+        this.log.error('Sale response was not the expected shape', undefined, {
+          code: 'BAD_SALE_ENVELOPE',
+          url: '/core/sales',
+          context: { keys: res ? Object.keys(res) : [], received: typeof res },
+        });
+        this.message.set({
+          kind: 'err',
+          text:
+            'The sale may have been saved, but the response could not be read. ' +
+            'Check the Sales tab before re-entering it.',
+        });
+        return;
+      }
+
       this.message.set({
         kind: 'ok',
-        text: `Sale ${sale?.saleNumber} committed locally for ${sale?.grandTotal}`,
+        text: `Sale ${sale.saleNumber} committed locally for ${formatAmount(sale.grandTotal)}`,
       });
       this.clearCart();
       await Promise.all([this.loadCatalog(), this.engine.refresh()]);
@@ -176,7 +199,7 @@ export class PosComponent {
     }
   }
 
-  switchTab(tab: 'sell' | 'sales' | 'sync'): void {
+  switchTab(tab: 'sell' | 'sales' | 'sync' | 'logs'): void {
     this.tab.set(tab);
     if (tab === 'sales') void this.loadSales();
     if (tab === 'sync') void this.engine.refresh();
@@ -187,6 +210,19 @@ export class PosComponent {
       err instanceof HttpErrorResponse
         ? (err.error?.message ?? `Request failed (${err.status})`)
         : String(err);
+
+    this.log.error(text, err, {
+      ...(err instanceof HttpErrorResponse
+        ? { code: String(err.status), url: err.url ?? null }
+        : {}),
+    });
     this.message.set({ kind: 'err', text });
   }
+}
+
+/** Money for a confirmation line. Zero is a real total; only absence is not. */
+function formatAmount(value: number | null | undefined): string {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : 'an unknown amount';
 }

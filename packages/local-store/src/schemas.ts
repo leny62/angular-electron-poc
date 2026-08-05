@@ -23,6 +23,7 @@
  */
 
 import type { JsonSchema } from './json-schema';
+import { LOG_COMPONENTS, LOG_LEVELS, LOG_SOURCES } from './log-vocabulary';
 
 // ---------------------------------------------------------------------------
 // Reusable fragments
@@ -492,6 +493,79 @@ export const REQUEST_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
       pathParams: { type: 'object' },
       query: { type: 'object' },
       body: { type: 'object' },
+    },
+  },
+
+  // --- listSystemLogs  GET /_engine/logs ---------------------------------
+  listSystemLogs: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      headers: { type: 'object' },
+      pathParams: { type: 'object', additionalProperties: false },
+      query: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          ...pageParams,
+          level: { type: 'string', enum: [...LOG_LEVELS] },
+          component: { type: 'string', enum: [...LOG_COMPONENTS] },
+          source: { type: 'string', enum: [...LOG_SOURCES] },
+          logger: { type: 'string', maxLength: 120 },
+          requestId: { type: 'string', maxLength: 100 },
+          search: { type: 'string', maxLength: 200 },
+          fromDate: { type: 'string', maxLength: 40 },
+          toDate: { type: 'string', maxLength: 40 },
+        },
+      },
+    },
+  },
+
+  // --- writeSystemLogs  POST /_engine/logs -------------------------------
+  //
+  // The only operation whose input is written to disk more or less verbatim,
+  // so every field is bounded. An unbounded `message` from a compromised
+  // renderer is a way to fill the device's disk, and an unbounded `context` is
+  // a way to hide a payload in a table nobody reads.
+  writeSystemLogs: {
+    type: 'object',
+    required: ['body'],
+    additionalProperties: false,
+    properties: {
+      headers: { type: 'object' },
+      pathParams: { type: 'object', additionalProperties: false },
+      query: { type: 'object', additionalProperties: false },
+      body: {
+        type: 'object',
+        required: ['entries'],
+        additionalProperties: false,
+        properties: {
+          entries: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 100,
+            items: {
+              type: 'object',
+              required: ['level', 'logger', 'message'],
+              additionalProperties: false,
+              properties: {
+                loggedAt: { type: 'string', maxLength: 40 },
+                level: { type: 'string', enum: [...LOG_LEVELS] },
+                component: { type: 'string', enum: [...LOG_COMPONENTS] },
+                logger: { type: 'string', minLength: 1, maxLength: 120 },
+                message: { type: 'string', minLength: 1, maxLength: 4000 },
+                exception: { type: 'string', maxLength: 8000 },
+                userName: { type: 'string', maxLength: 200 },
+                url: { type: 'string', maxLength: 1000 },
+                requestId: { type: 'string', maxLength: 100 },
+                code: { type: 'string', maxLength: 60 },
+                thread: { type: 'string', maxLength: 60 },
+                context: { type: 'object' },
+              },
+            },
+          },
+        },
+      },
     },
   },
 };

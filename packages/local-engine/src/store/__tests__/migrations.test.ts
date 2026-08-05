@@ -383,7 +383,10 @@ describe('long offline window, then an app update', () => {
 
     const result = runMigrations(db);
 
-    expect(result.outboxBackup).toBe('outbox_backup_v1');
+    // Named after the version being migrated FROM, which is whatever the
+    // first `runMigrations` above wrote. Derived rather than hardcoded so a
+    // schema bump does not fail a test about backups.
+    expect(result.outboxBackup).toBe(`outbox_backup_v${LOCAL_SCHEMA_VERSION}`);
     const backed = db
       .prepare(`SELECT count(*) AS c FROM ${result.outboxBackup}`)
       .get() as { c: number };
@@ -462,7 +465,7 @@ describe('outbox backup pruning', () => {
 
     const dropped = pruneOutboxBackups(db);
 
-    expect(dropped).toContain('outbox_backup_v1');
+    expect(dropped).toContain(`outbox_backup_v${LOCAL_SCHEMA_VERSION}`);
     const left = db
       .prepare(
         "SELECT count(*) AS c FROM sqlite_master WHERE type='table' AND name LIKE 'outbox_backup_v%'",

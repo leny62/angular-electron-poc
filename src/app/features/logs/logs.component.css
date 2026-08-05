@@ -1,0 +1,379 @@
+:host {
+  display: block;
+}
+
+.logs {
+  margin: 1.25rem;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+
+/* --- header ------------------------------------------------------------- */
+
+.logs-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.1rem 0.85rem;
+  border-bottom: 1px solid var(--brand-border, rgba(22, 105, 122, 0.14));
+}
+
+.logs-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.sub {
+  margin: 0.2rem 0 0;
+  color: var(--brand-muted, #64748b);
+  font-size: 0.85rem;
+  max-width: 60ch;
+}
+
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--brand-muted, #64748b);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.toggle input {
+  width: auto;
+  accent-color: var(--brand-dark, #16697a);
+  cursor: pointer;
+}
+
+/* --- filters ------------------------------------------------------------ */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.7rem;
+  padding: 0.9rem 1.1rem;
+  background: #f8fbfc;
+  border-bottom: 1px solid var(--brand-border, rgba(22, 105, 122, 0.14));
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 150px;
+}
+
+.field.grow {
+  flex: 1;
+  min-width: 220px;
+}
+
+.field label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  color: var(--brand-muted, #64748b);
+}
+
+.field select,
+.field input {
+  padding: 0.45rem 0.6rem;
+  border: 2px solid #cfe3e8;
+  border-radius: 6px;
+  background: #fff;
+  font: inherit;
+  font-size: 0.88rem;
+  width: 100%;
+}
+
+.field select:focus,
+.field input:focus {
+  outline: none;
+  border-color: var(--brand-focus, #4a42c8);
+  box-shadow: 0 0 0 3px rgba(74, 66, 200, 0.12);
+}
+
+button.ghost {
+  padding: 0.45rem 0.95rem;
+  border: 1px solid #cfe3e8;
+  background: #fff;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+button.ghost:hover:not(:disabled) {
+  border-color: var(--brand-teal, #489fb5);
+  background: #f2f9fb;
+}
+
+button.apply {
+  background: var(--brand-dark, #16697a);
+  border-color: var(--brand-dark, #16697a);
+  color: #fff;
+}
+
+button.apply:hover:not(:disabled) {
+  background: #125866;
+  border-color: #125866;
+}
+
+button.link {
+  border: 0;
+  background: none;
+  color: var(--brand-focus, #4a42c8);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0.45rem 0.2rem;
+  text-decoration: underline;
+}
+
+.notice {
+  margin: 0.9rem 1.1rem 0;
+  padding: 0.65rem 0.85rem;
+  border-radius: 6px;
+  font-size: 0.88rem;
+}
+
+.notice.err {
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+}
+
+/* --- table -------------------------------------------------------------- */
+
+/* The row count is the point of this screen, so the table scrolls inside a
+   fixed viewport rather than pushing the pager off the bottom of the page. */
+.table-scroll {
+  overflow: auto;
+  max-height: 62vh;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.83rem;
+}
+
+thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f1f6f8;
+  text-align: left;
+  padding: 0.55rem 0.6rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--brand-muted, #64748b);
+  white-space: nowrap;
+  border-bottom: 1px solid var(--brand-border, rgba(22, 105, 122, 0.14));
+}
+
+tbody td {
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid #eef2f3;
+  vertical-align: top;
+}
+
+tr.row {
+  cursor: pointer;
+}
+
+tr.row:hover td {
+  background: #f6fbfc;
+}
+
+tr.row.expanded td {
+  background: #eef7f9;
+  border-bottom-color: transparent;
+}
+
+.w-time { width: 12rem; }
+.w-level { width: 5.5rem; }
+.w-message { min-width: 22rem; }
+.w-exc { width: 5rem; }
+
+.nowrap { white-space: nowrap; }
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+}
+
+.message {
+  max-width: 34rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.truncate {
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.muted { color: var(--brand-muted, #64748b); }
+
+.empty-cell {
+  padding: 2.5rem 1rem;
+  text-align: center;
+  color: var(--brand-muted, #64748b);
+}
+
+/* --- level and source pills --------------------------------------------- */
+
+/* Level is the first thing anyone scans for, so it carries the only saturated
+   colour in the row. Everything else stays neutral so the colour means
+   something. */
+.level {
+  display: inline-block;
+  min-width: 3.4rem;
+  text-align: center;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.level-debug { background: #eef2f5; color: #64748b; }
+.level-info { background: #dff0f4; color: #10606f; }
+.level-warn { background: #fff0d6; color: #92600a; }
+.level-error { background: #fde2e2; color: #b91c1c; }
+.level-fatal { background: #b91c1c; color: #fff; }
+
+.source {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  background: #eef2f5;
+  color: #475569;
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.source.browser {
+  background: rgba(130, 192, 204, 0.28);
+  color: #10606f;
+}
+
+.has-exc {
+  color: #b91c1c;
+  font-weight: 600;
+  font-size: 0.78rem;
+}
+
+/* --- detail panel ------------------------------------------------------- */
+
+.detail-row td {
+  background: #eef7f9;
+  padding: 0 0.6rem 0.9rem;
+}
+
+.detail {
+  border-left: 3px solid var(--brand-teal, #489fb5);
+  padding: 0.7rem 0.9rem;
+  background: #fff;
+  border-radius: 0 6px 6px 0;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 0.6rem 1rem;
+}
+
+.detail-grid dt,
+.detail-block > dt {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  color: var(--brand-muted, #64748b);
+}
+
+.detail-grid dd {
+  margin: 0.1rem 0 0;
+  word-break: break-all;
+}
+
+.detail-block {
+  margin-top: 0.85rem;
+}
+
+.full-message {
+  margin: 0.2rem 0 0;
+  font-size: 0.88rem;
+  white-space: pre-wrap;
+}
+
+.exception {
+  margin: 0.3rem 0 0;
+  padding: 0.65rem 0.8rem;
+  background: #1f2937;
+  color: #f8b4b4;
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+/* --- pager -------------------------------------------------------------- */
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.8rem 1.1rem;
+  border-top: 1px solid var(--brand-border, rgba(22, 105, 122, 0.14));
+  background: #f8fbfc;
+}
+
+.count {
+  font-size: 0.85rem;
+  color: var(--brand-muted, #64748b);
+}
+
+.pager-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.page-of {
+  font-size: 0.85rem;
+  color: var(--brand-muted, #64748b);
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .logs-head { flex-direction: column; }
+  .field, .field.grow { min-width: 100%; }
+}

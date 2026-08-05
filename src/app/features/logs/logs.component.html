@@ -1,0 +1,225 @@
+<section class="logs">
+  <header class="logs-head">
+    <div>
+      <h2>System logs</h2>
+      <p class="sub">
+        Every entry written by the application, the queue service, and the device
+        service, from both the browser and the engine.
+      </p>
+    </div>
+
+    <div class="head-actions">
+      <label class="toggle">
+        <input
+          type="checkbox"
+          [ngModel]="autoRefresh()"
+          (ngModelChange)="autoRefresh.set($event)" />
+        <span>Auto-refresh</span>
+      </label>
+      <button class="ghost" (click)="load()" [disabled]="busy()">
+        {{ busy() ? 'Loading…' : 'Refresh' }}
+      </button>
+    </div>
+  </header>
+
+  <div class="filters">
+    <div class="field">
+      <label for="f-component">Component</label>
+      <select
+        id="f-component"
+        [ngModel]="component()"
+        (ngModelChange)="setComponent($event)">
+        <option value="">All components</option>
+        @for (c of components; track c) {
+          <option [value]="c">{{ label(c) }}</option>
+        }
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="f-level">Level</label>
+      <select id="f-level" [ngModel]="level()" (ngModelChange)="setLevel($event)">
+        <option value="">All levels</option>
+        @for (l of levels; track l) {
+          <option [value]="l">{{ label(l) }}</option>
+        }
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="f-source">Source</label>
+      <select id="f-source" [ngModel]="source()" (ngModelChange)="setSource($event)">
+        <option value="">Browser and server</option>
+        @for (s of sources; track s) {
+          <option [value]="s">{{ label(s) }}</option>
+        }
+      </select>
+    </div>
+
+    <div class="field grow">
+      <label for="f-search">Search</label>
+      <input
+        id="f-search"
+        type="search"
+        placeholder="Message, logger, exception, or URL"
+        [ngModel]="search()"
+        (ngModelChange)="search.set($event)"
+        (keyup.enter)="applySearch()" />
+    </div>
+
+    <div class="field">
+      <label for="f-size">Per page</label>
+      <select id="f-size" [ngModel]="size()" (ngModelChange)="setSize($event)">
+        @for (s of pageSizes; track s) {
+          <option [value]="s">{{ s }}</option>
+        }
+      </select>
+    </div>
+
+    <button class="ghost apply" (click)="applySearch()" [disabled]="busy()">Apply</button>
+    @if (hasFilters()) {
+      <button class="link" (click)="clearFilters()">Clear</button>
+    }
+  </div>
+
+  @if (error(); as e) {
+    <div class="notice err">{{ e }}</div>
+  }
+
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th class="w-time">Date</th>
+          <th class="w-level">Level</th>
+          <th>Component</th>
+          <th>Logger</th>
+          <th>Source</th>
+          <th class="w-message">Message</th>
+          <th>Code</th>
+          <th>User</th>
+          <th>URL</th>
+          <th>Request</th>
+          <th>Device</th>
+          <th>Thread</th>
+          <th class="w-exc">Exception</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        @for (row of rows(); track row.id) {
+          <tr
+            class="row"
+            [class.expanded]="expanded() === row.id"
+            (click)="toggle(row.id)">
+            <td class="mono nowrap">{{ row.loggedAt | date: 'yyyy-MM-dd HH:mm:ss.SSS' }}</td>
+            <td>
+              <span class="level" [class]="'level-' + row.level.toLowerCase()">
+                {{ row.level }}
+              </span>
+            </td>
+            <td class="nowrap">{{ label(row.component) }}</td>
+            <td class="mono nowrap">{{ row.logger }}</td>
+            <td>
+              <span class="source" [class.browser]="row.source === 'BROWSER'">
+                {{ row.source === 'BROWSER' ? 'Browser' : 'Server' }}
+              </span>
+            </td>
+            <td class="message" [title]="row.message">{{ row.message }}</td>
+            <td class="mono nowrap">{{ row.code || '—' }}</td>
+            <td class="nowrap">{{ row.userName || '—' }}</td>
+            <td class="mono truncate" [title]="row.url">{{ row.url || '—' }}</td>
+            <td class="mono nowrap" [title]="row.requestId">
+              {{ row.requestId ? row.requestId.slice(0, 8) : '—' }}
+            </td>
+            <td class="mono nowrap" [title]="row.deviceId">
+              {{ row.deviceId ? row.deviceId.slice(0, 8) : '—' }}
+            </td>
+            <td class="mono nowrap">{{ row.thread || '—' }}</td>
+            <td>
+              @if (row.exception) {
+                <span class="has-exc">Yes</span>
+              } @else {
+                <span class="muted">—</span>
+              }
+            </td>
+          </tr>
+
+          @if (expanded() === row.id) {
+            <tr class="detail-row">
+              <td colspan="13">
+                <div class="detail">
+                  <div class="detail-grid">
+                    <div><dt>Logged at</dt><dd class="mono">{{ row.loggedAt }}</dd></div>
+                    <div><dt>Sequence</dt><dd class="mono">{{ row.seq }}</dd></div>
+                    <div><dt>Logger</dt><dd class="mono">{{ row.logger }}</dd></div>
+                    <div><dt>Request id</dt><dd class="mono">{{ row.requestId || '—' }}</dd></div>
+                    <div><dt>Device id</dt><dd class="mono">{{ row.deviceId || '—' }}</dd></div>
+                    <div><dt>Tenant</dt><dd class="mono">{{ row.tenantId || '—' }}</dd></div>
+                    <div><dt>Thread</dt><dd class="mono">{{ row.thread || '—' }}</dd></div>
+                    <div><dt>URL</dt><dd class="mono">{{ row.url || '—' }}</dd></div>
+                  </div>
+
+                  <div class="detail-block">
+                    <dt>Message</dt>
+                    <p class="full-message">{{ row.message }}</p>
+                  </div>
+
+                  @if (contextPairs(row).length > 0) {
+                    <div class="detail-block">
+                      <dt>Context</dt>
+                      <div class="detail-grid">
+                        @for (pair of contextPairs(row); track pair.key) {
+                          <div>
+                            <dt>{{ pair.key }}</dt>
+                            <dd class="mono">{{ pair.value }}</dd>
+                          </div>
+                        }
+                      </div>
+                    </div>
+                  }
+
+                  @if (row.exception) {
+                    <div class="detail-block">
+                      <dt>Exception</dt>
+                      <pre class="exception">{{ row.exception }}</pre>
+                    </div>
+                  }
+                </div>
+              </td>
+            </tr>
+          }
+        } @empty {
+          <tr>
+            <td colspan="13" class="empty-cell">
+              @if (busy()) {
+                Loading logs…
+              } @else if (hasFilters()) {
+                No entries match these filters.
+              } @else {
+                No log entries yet.
+              }
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <footer class="pager">
+    <span class="count">
+      @if (total() > 0) {
+        Showing <strong>{{ from() }}–{{ to() }}</strong> of
+        <strong>{{ total() }}</strong> entries
+      } @else {
+        No entries
+      }
+    </span>
+
+    <div class="pager-controls">
+      <button class="ghost" (click)="prev()" [disabled]="!canPrev()">Previous</button>
+      <span class="page-of">Page {{ page() + 1 }} of {{ totalPages() }}</span>
+      <button class="ghost" (click)="next()" [disabled]="!canNext()">Next</button>
+    </div>
+  </footer>
+</section>

@@ -6,6 +6,13 @@
  */
 
 export type { JsonSchema, JsonSchemaType } from './json-schema';
+export type { LogComponent, LogLevel, LogSource } from './log-vocabulary';
+export {
+  LOG_COMPONENTS,
+  LOG_LEVEL_RANK,
+  LOG_LEVELS,
+  LOG_SOURCES,
+} from './log-vocabulary';
 export type { HttpMethod, OperationKind, RouteDescriptor } from './types';
 export type { CompiledRoute } from './routes';
 export {

@@ -32,8 +32,11 @@ import {
   type OperationResult,
 } from '../contracts';
 import * as D from '../domain/decimal';
+import { getLogger } from '../logging/logger';
 import type { SqliteDatabase } from '../store/types';
 import { issueReceipt } from './receipt-chain';
+
+const log = getLogger('create-sale');
 import { rowToSale, type SaleDto } from '@bizuri/local-store';
 import type { SaleLineRow, SalePaymentRow, SaleRow } from '@bizuri/local-store';
 
@@ -339,6 +342,26 @@ export function makeCreateSale(deps: CreateSaleDeps) {
     });
 
     const sale = run();
+
+    // The money line. A sale that exists locally but never reaches the server
+    // is the failure this whole architecture is built to survive, so the local
+    // commit is recorded at INFO with everything needed to trace it: the sale
+    // number the cashier read off the screen, and the idempotency key the
+    // outbox will push under.
+    log.info(`Sale ${sale.saleNumber} committed locally`, {
+      code: '201',
+      tenantId,
+      context: {
+        saleId: sale.id,
+        saleNumber: sale.saleNumber,
+        status: sale.status,
+        grandTotal: sale.grandTotal,
+        lines: sale.lines.length,
+        idempotencyKey,
+        branchId,
+      },
+    });
+
     // Wrap in the same envelope the real API uses so the renderer's
     // `res?.data` accessor works identically for local and remote responses.
     return {

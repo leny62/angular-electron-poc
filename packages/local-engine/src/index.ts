@@ -166,3 +166,31 @@ export type { Envelope, GetConfig, ListConfig } from './operations/replica-reade
 // Sync
 export { SyncWorker } from './sync/sync-worker';
 export type { SyncResult, SyncState, SyncWorkerConfig } from './sync/sync-worker';
+
+// ---------------------------------------------------------------------------
+// Logging
+//
+// `getLogger` is the whole public surface for a feature author. Everything else
+// here exists for the host's startup and for tests.
+// ---------------------------------------------------------------------------
+
+export {
+  configureLogging,
+  currentLogContext,
+  flush as flushLogs,
+  getLogger,
+  pruneLogs,
+  recordExternal,
+  resetLogging,
+  shutdownLogging,
+  withLogContext,
+} from './logging/logger';
+export type {
+  AmbientContext,
+  LogEntry,
+  LogFields,
+  Logger,
+  LoggingConfig,
+} from './logging/logger';
+export { makeLogOps } from './operations/log-ops';
+export type { LogOpsDeps } from './operations/log-ops';
