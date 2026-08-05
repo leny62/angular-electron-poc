@@ -1,0 +1,35 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "experimentalDecorators": true,
+    "baseUrl": "..",
+    "paths": {
+      "@bizuri/local-store": [
+        "./local-store/dist/index.d.ts"
+      ],
+      "@bizuri/local-store/browser": [
+        "./local-store/dist/browser.d.ts"
+      ]
+    }
+  },
+  "references": [
+    {
+      "path": "../local-store"
+    }
+  ],
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/__tests__/**"
+  ]
+}

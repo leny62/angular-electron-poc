@@ -1,0 +1,172 @@
+@if (!engine.status().tenantId) {
+  <app-unlock (signedIn)="onSignedIn()" />
+} @else {
+  <header class="bar">
+    <div class="brand">
+      <span class="dot" [class.online]="engine.syncState() === 'IDLE'"
+            [class.offline]="engine.syncState() === 'OFFLINE'"></span>
+      <strong>Bizuri POS</strong>
+      <span class="muted">{{ engine.status().state }}</span>
+    </div>
+
+    <nav>
+      <button [class.active]="tab() === 'sell'" (click)="switchTab('sell')">Sell</button>
+      <button [class.active]="tab() === 'sales'" (click)="switchTab('sales')">Sales</button>
+      <button [class.active]="tab() === 'sync'" (click)="switchTab('sync')">
+        Sync
+        @if (engine.status().outbox.pending > 0) {
+          <span class="badge">{{ engine.status().outbox.pending }}</span>
+        }
+      </button>
+    </nav>
+  </header>
+
+  @if (message(); as m) {
+    <div class="message" [class.err]="m.kind === 'err'">{{ m.text }}</div>
+  }
+
+  @if (!engine.available) {
+    <div class="message err">
+      Local engine unavailable. Run this inside Electron: <code>npm run electron:dev</code>
+    </div>
+  }
+
+@if (tab() === 'sell') {
+  <section class="sell">
+    <div class="catalog">
+      <div class="search">
+        <input
+          type="search"
+          placeholder="Search items"
+          [ngModel]="search()"
+          (ngModelChange)="search.set($event)"
+          (keyup.enter)="loadCatalog()" />
+        <button (click)="loadCatalog()" [disabled]="busy()">Search</button>
+      </div>
+
+      @if (catalog().length === 0) {
+        <p class="empty">
+          No items. Hydrate from the API on the Sync tab, or check the branch.
+        </p>
+      }
+
+      <ul class="items">
+        @for (item of catalog(); track item.itemId) {
+          <li (click)="add(item)">
+            <div>
+              <strong>{{ item.itemName }}</strong>
+              <small>{{ item.itemCode }}</small>
+            </div>
+            <div class="right">
+              <span class="price">{{ item.sellingPrice | number: '1.0-2' }}</span>
+              <small>
+                @if (item.sellMode === 'MADE_TO_ORDER') { made to order }
+                @else { {{ item.availableQty | number: '1.0-2' }} left }
+              </small>
+            </div>
+          </li>
+        }
+      </ul>
+    </div>
+
+    <aside class="cart">
+      <h2>Cart</h2>
+
+      @if (cart().length === 0) {
+        <p class="empty">Tap an item to add it.</p>
+      }
+
+      <ul>
+        @for (line of cart(); track line.item.itemId) {
+          <li>
+            <span class="name">{{ line.item.itemName }}</span>
+            <span class="qty">
+              <button (click)="changeQty(line.item.itemId, -1)">-</button>
+              {{ line.quantity }}
+              <button (click)="changeQty(line.item.itemId, 1)">+</button>
+            </span>
+            <span class="line-total">
+              {{ (line.item.sellingPrice ?? 0) * line.quantity | number: '1.0-2' }}
+            </span>
+          </li>
+        }
+      </ul>
+
+      <div class="total">
+        <span>Total</span>
+        <strong>{{ total() | number: '1.0-2' }}</strong>
+      </div>
+
+      <button class="primary" [disabled]="!canSell()" (click)="checkout()">
+        {{ busy() ? 'Working...' : 'Confirm sale' }}
+      </button>
+      <button class="ghost" [disabled]="cart().length === 0" (click)="clearCart()">Clear</button>
+    </aside>
+  </section>
+}
+
+@if (tab() === 'sales') {
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Recent sales</h2>
+      <button (click)="loadSales()" [disabled]="busy()">Refresh</button>
+    </div>
+
+    @if (sales().length === 0) {
+      <p class="empty">No sales yet.</p>
+    }
+
+    <table>
+      <thead>
+        <tr><th>Number</th><th>Status</th><th>Subtotal</th><th>Tax</th><th>Total</th></tr>
+      </thead>
+      <tbody>
+        @for (sale of sales(); track sale.id) {
+          <tr>
+            <td>{{ sale.saleNumber }}</td>
+            <td>{{ sale.status }}</td>
+            <td class="num">{{ sale.subtotal | number: '1.2-2' }}</td>
+            <td class="num">{{ sale.taxTotal | number: '1.2-2' }}</td>
+            <td class="num"><strong>{{ sale.grandTotal | number: '1.2-2' }}</strong></td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </section>
+}
+
+@if (tab() === 'sync') {
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Sync</h2>
+      <button class="primary" (click)="sync()" [disabled]="busy()">
+        {{ busy() ? 'Syncing...' : 'Sync now' }}
+      </button>
+    </div>
+
+    <dl class="stats">
+      <div><dt>Engine</dt><dd>{{ engine.status().state }}</dd></div>
+      <div><dt>Sync</dt><dd>{{ engine.syncState() }}</dd></div>
+      <div><dt>Pending</dt><dd>{{ engine.status().outbox.pending }}</dd></div>
+      <div><dt>Synced</dt><dd>{{ engine.status().outbox.synced }}</dd></div>
+      <div><dt>Failed</dt><dd>{{ engine.status().outbox.failed }}</dd></div>
+      <div><dt>Contract</dt><dd>{{ engine.status().contractVersion }}</dd></div>
+      <div><dt>Schema</dt><dd>v{{ engine.status().localSchemaVersion }}</dd></div>
+      <div><dt>Device</dt><dd class="mono">{{ engine.status().deviceId }}</dd></div>
+    </dl>
+
+    @if (engine.status().reason) {
+      <p class="muted">{{ engine.status().reason }}</p>
+    }
+
+    @if (engine.hydrationProgress(); as h) {
+      <p class="muted">Last hydrated: {{ h.table }} ({{ h.rows }} rows)</p>
+    }
+
+    <p class="hint">
+      To see offline behaviour: <code>curl -X POST localhost:4300/__mock/offline</code>,
+      make a few sales, then <code>/__mock/online</code> and press Sync now.
+    </p>
+  </section>
+}
+}

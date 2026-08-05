@@ -1,0 +1,59 @@
+<div class="unlock-screen">
+  <div class="unlock-card">
+    <span class="unlock-icon">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+        <path d="M7 11V7a5 5 0 0 1 10 0v1"/>
+        <circle cx="12" cy="16" r="1"/>
+      </svg>
+    </span>
+
+    <h1>Bizuri POS</h1>
+    <p class="unlock-subtitle">Sign in to sync with the remote API</p>
+
+    <form class="unlock-form" (submit)="submit(); $event.preventDefault()" autocomplete="off">
+      <label for="email">Email</label>
+      <input
+        id="email"
+        name="email"
+        type="email"
+        [ngModel]="email()"
+        (ngModelChange)="email.set($event)"
+        placeholder="demo@bizuri.test"
+        autofocus
+        spellcheck="false" />
+
+      <label for="password">Password</label>
+      <input
+        id="password"
+        name="password"
+        type="password"
+        [ngModel]="password()"
+        (ngModelChange)="password.set($event)"
+        placeholder="At least 12 characters" />
+
+      <label for="slug">Subdomain</label>
+      <input
+        id="slug"
+        name="slug"
+        type="text"
+        [ngModel]="subdomainSlug()"
+        (ngModelChange)="subdomainSlug.set($event)"
+        placeholder="demo"
+        spellcheck="false" />
+
+      <button type="submit" class="btn-primary" [disabled]="busy()">
+        {{ busy() ? 'Signing in...' : 'Sign in' }}
+      </button>
+
+      @if (error(); as err) {
+        <div class="unlock-error">{{ err }}</div>
+      }
+    </form>
+
+    <p class="unlock-hint">
+      Or set <code>BIZURI_EMAIL</code>, <code>BIZURI_PASSWORD</code>, and
+      <code>BIZURI_SLUG</code> to skip this screen.
+    </p>
+  </div>
+</div>

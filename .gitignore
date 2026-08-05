@@ -41,3 +41,16 @@ testem.log
 # System files
 .DS_Store
 Thumbs.db
+
+# Built package output
+packages/*/dist/
+
+# Local credentials for the live smoke test. NEVER commit.
+.env.local
+.env.*.local
+
+# Packaged installers (483 MB of build output, never commit)
+release/
+
+# Editor and cloud-sync temp files
+.!*!*
