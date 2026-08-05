@@ -19,6 +19,9 @@ interface CartLine {
 interface SaleRow {
   id: string; saleNumber: string; status: string; syncState: string;
   grandTotal: string; clientName: string | null; createdAt: string;
+  amountPaid?: string; balanceDue?: string;
+  receipt?: { seq: number; prevHash: string; hash: string; issuedAt: string };
+  items?: Array<{ itemId: string; quantity: number; unitPrice?: number }>;
 }
 
 type Tab = 'catalog' | 'cart' | 'sales' | 'sync';
@@ -149,7 +152,9 @@ type Tab = 'catalog' | 'cart' | 'sales' | 'sync';
               </tr>
             </thead>
             <tbody>
-              <tr *ngFor="let sale of sales()">
+              <tr *ngFor="let sale of sales()"
+                (click)="viewReceipt(sale)"
+                [class.selected]="selectedSale()?.id === sale.id">
                 <td class="receipt-cell">{{ sale.saleNumber }}</td>
                 <td>{{ sale.grandTotal }} RWF</td>
                 <td><span class="pill ok">{{ sale.status }}</span></td>
@@ -158,6 +163,69 @@ type Tab = 'catalog' | 'cart' | 'sales' | 'sync';
               </tr>
             </tbody>
           </table>
+
+          <div class="receipt-detail" *ngIf="selectedSale()">
+            <div class="receipt-detail-header">
+              <h3>Receipt {{ selectedSale()?.saleNumber }}</h3>
+              <button class="btn-icon" (click)="selectedSale.set(null)">&times;</button>
+            </div>
+            <div class="receipt-detail-grid">
+              <div class="receipt-field">
+                <span class="field-label">Date</span>
+                <span class="field-value">{{ selectedSale()?.createdAt | slice:0:19 }}</span>
+              </div>
+              <div class="receipt-field">
+                <span class="field-label">Status</span>
+                <span class="field-value">{{ selectedSale()?.status }}</span>
+              </div>
+              <div class="receipt-field">
+                <span class="field-label">Sync</span>
+                <span class="field-value">{{ selectedSale()?.syncState }}</span>
+              </div>
+              <div class="receipt-field">
+                <span class="field-label">Total</span>
+                <span class="field-value strong">{{ selectedSale()?.grandTotal }} RWF</span>
+              </div>
+              <div class="receipt-field" *ngIf="selectedSale()?.amountPaid">
+                <span class="field-label">Paid</span>
+                <span class="field-value">{{ selectedSale()?.amountPaid }} RWF</span>
+              </div>
+              <div class="receipt-field" *ngIf="selectedSale()?.balanceDue">
+                <span class="field-label">Balance</span>
+                <span class="field-value">{{ selectedSale()?.balanceDue }} RWF</span>
+              </div>
+              <ng-container *ngIf="selectedSale()?.receipt">
+                <div class="receipt-field full-width">
+                  <span class="field-label">Receipt Hash</span>
+                  <span class="field-value mono">{{ selectedSale()?.receipt?.hash }}</span>
+                </div>
+                <div class="receipt-field full-width">
+                  <span class="field-label">Previous Hash</span>
+                  <span class="field-value mono">{{ selectedSale()?.receipt?.prevHash }}</span>
+                </div>
+                <div class="receipt-field">
+                  <span class="field-label">Hash Seq</span>
+                  <span class="field-value">#{{ selectedSale()?.receipt?.seq }}</span>
+                </div>
+              </ng-container>
+            </div>
+
+            <div class="receipt-items" *ngIf="selectedSale()?.items?.length">
+              <h4>Items</h4>
+              <table class="receipt-items-table">
+                <thead>
+                  <tr><th>Item ID</th><th>Qty</th></tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let item of selectedSale()?.items">
+                    <td>{{ item.itemId }}</td>
+                    <td>{{ item.quantity }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           <div class="empty-state" *ngIf="!loadingSales() && !sales().length">
             No sales yet.
           </div>
@@ -248,6 +316,7 @@ export class PosShellComponent implements OnInit, OnDestroy {
   checkoutError = signal('');
 
   sales = signal<SaleRow[]>([]);
+  selectedSale = signal<SaleRow | null>(null);
   loadingSales = signal(false);
 
   syncStatus = signal({ pushed: 0, pulled: 0, pending: 0, state: 'IDLE' });
@@ -399,6 +468,17 @@ export class PosShellComponent implements OnInit, OnDestroy {
   // -------------------------------------------------------------------
   // Sales
   // -------------------------------------------------------------------
+
+  viewReceipt(sale: SaleRow): void {
+    this.selectedSale.set(null);
+    this.subs.add(
+      this.bridge.invoke<SaleRow>('sale.get', { saleId: sale.id }).subscribe((r) => {
+        if (r.ok) {
+          this.selectedSale.set(r.data);
+        }
+      }),
+    );
+  }
 
   loadSales(): void {
     this.loadingSales.set(true);

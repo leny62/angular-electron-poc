@@ -44,6 +44,17 @@ export interface SaleRow {
   idempotencyKey: string;
   createdAt: string;
   confirmedAt: string | null;
+  receipt?: {
+    seq: number;
+    prevHash: string;
+    hash: string;
+    issuedAt: string;
+  };
+  items?: Array<{
+    itemId: string;
+    quantity: number;
+    unitPrice?: number;
+  }>;
 }
 
 export interface SaleListResult {
@@ -243,16 +254,63 @@ export function handleSaleGet(
   }
 
   const row = db.prepare(`
-    SELECT id, server_id AS serverId, sale_number AS saleNumber,
-      status, sync_state AS syncState,
-      customer_id AS customerId, client_name AS clientName,
-      grand_total AS grandTotal, amount_paid AS amountPaid,
-      balance_due AS balanceDue, idempotency_key AS idempotencyKey,
-      created_at AS createdAt, confirmed_at AS confirmedAt
-    FROM sale WHERE id = ?
-  `).get(saleId) as SaleRow | undefined;
+    SELECT s.id, s.server_id AS serverId, s.sale_number AS saleNumber,
+      s.status, s.sync_state AS syncState,
+      s.customer_id AS customerId, s.client_name AS clientName,
+      s.grand_total AS grandTotal, s.amount_paid AS amountPaid,
+      s.balance_due AS balanceDue, s.idempotency_key AS idempotencyKey,
+      s.created_at AS createdAt, s.confirmed_at AS confirmedAt,
+      r.seq AS receiptSeq, r.prev_hash AS receiptPrevHash,
+      r.hash AS receiptHash, r.issued_at AS receiptIssuedAt,
+      o.payload AS outboxPayload
+    FROM sale s
+    LEFT JOIN receipt r ON r.sale_id = s.id
+    LEFT JOIN outbox o ON o.entity_id = s.id AND o.entity = 'sale'
+    WHERE s.id = ?
+    LIMIT 1
+  `).get(saleId) as Record<string, unknown> | undefined;
 
-  return row ?? null;
+  if (!row) return null;
+
+  const result: SaleRow = {
+    id: row.id as string,
+    serverId: row.serverId as string | null,
+    saleNumber: row.saleNumber as string,
+    status: row.status as string,
+    syncState: row.syncState as string,
+    customerId: row.customerId as string | null,
+    clientName: row.clientName as string | null,
+    grandTotal: row.grandTotal as string,
+    amountPaid: row.amountPaid as string,
+    balanceDue: row.balanceDue as string,
+    idempotencyKey: row.idempotencyKey as string,
+    createdAt: row.createdAt as string,
+    confirmedAt: row.confirmedAt as string | null,
+  };
+
+  if (row.receiptSeq != null) {
+    result.receipt = {
+      seq: row.receiptSeq as number,
+      prevHash: row.receiptPrevHash as string,
+      hash: row.receiptHash as string,
+      issuedAt: row.receiptIssuedAt as string,
+    };
+  }
+
+  if (row.outboxPayload) {
+    try {
+      const outboxData = JSON.parse(row.outboxPayload as string) as {
+        items?: Array<{ itemId: string; quantity: number; unitPrice?: number }>;
+      };
+      if (outboxData.items) {
+        result.items = outboxData.items;
+      }
+    } catch {
+      // Payload may not be valid JSON — ignore.
+    }
+  }
+
+  return result;
 }
 
 export function handleSaleList(

@@ -1,0 +1,12 @@
+{
+  "name": "@bizuri/local-store",
+  "version": "0.1.0-dev",
+  "description": "Offline local-store contract for Bizuri. HAND-WRITTEN PLACEHOLDER for the output of the bizuri-sqlite OpenAPI generator.",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "verify": "ts-node src/tools/verify-manifest.ts"
+  }
+}

@@ -270,8 +270,13 @@ function createWindow(): void {
     },
   });
 
-  // Load the Angular dev server.
-  mainWindow.loadURL(ALLOWED_ORIGIN);
+  // In development, load from the Angular dev server.
+  // In production, load the built index.html from disk.
+  if (app.isPackaged) {
+    mainWindow.loadFile(join(__dirname, '..', 'angular-electron-poc', 'browser', 'index.html'));
+  } else {
+    mainWindow.loadURL(ALLOWED_ORIGIN);
+  }
 
   // Open DevTools in dev mode for diagnostics.
   if (process.env.NODE_ENV !== 'production') {

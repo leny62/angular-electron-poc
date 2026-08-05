@@ -1,0 +1,18 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "baseUrl": "..",
+    // Resolves to local-store's emitted declarations, not its sources. Pointing
+    // at source would drag another project's files into this rootDir.
+    // The jest config maps the same specifier to source so tests need no build.
+    "paths": {
+      "@bizuri/local-store": ["./local-store/dist/index.d.ts"]
+    }
+  },
+  "references": [{ "path": "../local-store" }],
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "**/__tests__/**"]
+}
