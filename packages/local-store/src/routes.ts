@@ -222,6 +222,28 @@ export const ENGINE_ROUTES: readonly RouteDescriptor[] = [
     rateLimit: 20,
     requiresUnlock: true,
   },
+  {
+    operationId: 'listSystemLogs',
+    method: 'GET',
+    path: '/_engine/logs',
+    kind: 'handwritten',
+    // The log viewer paginates and auto-refreshes; 240/min leaves room for a
+    // 5s refresh plus a support engineer clicking through pages.
+    rateLimit: 240,
+    // Deliberately readable while LOCKED. The entries worth reading are the
+    // ones explaining why the engine never got past LOCKED.
+    requiresUnlock: false,
+  },
+  {
+    operationId: 'writeSystemLogs',
+    method: 'POST',
+    path: '/_engine/logs',
+    kind: 'handwritten',
+    // Renderer entries arrive in batches, not one per call. High enough that a
+    // burst of UI errors is recorded rather than rate-limited into silence.
+    rateLimit: 600,
+    requiresUnlock: false,
+  },
 ];
 
 // ---------------------------------------------------------------------------

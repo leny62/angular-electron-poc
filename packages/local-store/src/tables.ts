@@ -19,6 +19,7 @@
  *                          and from `mode`.  Not present in any DTO.
  */
 
+import { LOG_COMPONENTS, LOG_LEVELS, LOG_SOURCES } from './log-vocabulary';
 import type { ColumnDescriptor, TableDescriptor } from './types';
 
 // ---------------------------------------------------------------------------
@@ -69,6 +70,14 @@ const SYNC_STATE = ['PENDING', 'SYNCED', 'CONFLICT', 'FAILED'] as const;
 
 /** Local-only. Outbox lifecycle. */
 const OUTBOX_STATE = ['PENDING', 'INFLIGHT', 'SYNCED', 'CONFLICT', 'FAILED'] as const;
+
+/**
+ * Local-only. Diagnostic vocabulary, shared with the gate-4 schemas and the log
+ * viewer's filters so the three cannot drift. See `log-vocabulary.ts`.
+ */
+const LOG_LEVEL = LOG_LEVELS;
+const LOG_COMPONENT = LOG_COMPONENTS;
+const LOG_SOURCE = LOG_SOURCES;
 
 // ---------------------------------------------------------------------------
 // Injected column groups, added by the generator based on `mode`
@@ -457,6 +466,70 @@ export const DEVICE_SESSION: TableDescriptor = {
   uniqueIndexes: [],
 };
 
+/**
+ * Diagnostic log, modelled on the Fionet `ActivityLog` table that log4net's
+ * `AdoNetAppender` writes to.
+ *
+ * Deliberately NOT scoped to a tenant. The entries worth having are the ones
+ * written before a tenant is known: startup, migration, unlock failure. A
+ * `tenant_id` column exists for filtering when one happens to be in context,
+ * but it is nullable and never part of a WHERE clause the reader forces.
+ *
+ * `seq` is a device-global monotonic counter assigned by the main process,
+ * which owns every write including the ones shipped over from the renderer.
+ * Ordering by `logged_at` alone is not enough: a burst writes many entries in
+ * the same millisecond, and a paginated view over a non-unique sort key
+ * repeats and skips rows between pages.
+ */
+export const SYSTEM_LOGS: TableDescriptor = {
+  table: 'system_logs',
+  schema: null,
+  mode: 'system',
+  primaryKey: ['id'],
+  scope: [],
+  columns: [
+    uuid('id', 'id'),
+    int('seq', 'seq'),
+    ts('logged_at', 'loggedAt'),
+    enumCol('level', 'level', LOG_LEVEL, false),
+    enumCol('component', 'component', LOG_COMPONENT, false),
+    enumCol('source', 'source', LOG_SOURCE, false),
+    col('logger', 'logger', 'TEXT', false, {
+      comment: 'Module that emitted the entry, e.g. "gateway" or "pos.component".',
+    }),
+    text('message', 'message'),
+    col('exception', 'exception', 'TEXT', true, {
+      comment: 'Error name, message, and stack. NULL when nothing was thrown.',
+    }),
+    text('user_name', 'userName', true),
+    col('url', 'url', 'TEXT', true, {
+      comment: 'Operation path or renderer route the entry was produced under.',
+    }),
+    col('request_id', 'requestId', 'TEXT', true, {
+      comment: 'Bridge correlation id. Joins a renderer entry to its engine entries.',
+    }),
+    col('code', 'code', 'TEXT', true, {
+      comment: 'Error code or HTTP status, e.g. "E_SCHEMA" or "201".',
+    }),
+    text('device_id', 'deviceId', true),
+    col('thread', 'thread', 'TEXT', true, {
+      comment: 'Logical execution context: "main", "renderer", "sync-worker".',
+    }),
+    text('tenant_id', 'tenantId', true),
+    col('context', 'context', 'JSON', true, {
+      comment: 'Extra structured fields, serialised. Never holds secrets.',
+    }),
+  ],
+  indexes: [
+    ['logged_at', 'seq'],
+    ['level'],
+    ['component'],
+    ['source'],
+    ['request_id'],
+  ],
+  uniqueIndexes: [],
+};
+
 // ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
@@ -471,6 +544,7 @@ export const TABLES: readonly TableDescriptor[] = [
   DEVICE_SESSION,
   SYNC_CURSOR,
   OUTBOX,
+  SYSTEM_LOGS,
   // replicas
   SALES_CATALOG,
   STOCK_BALANCES,

@@ -18,6 +18,7 @@
           <span class="badge">{{ engine.status().outbox.pending }}</span>
         }
       </button>
+      <button [class.active]="tab() === 'logs'" (click)="switchTab('logs')">Logs</button>
     </nav>
   </header>
 
@@ -168,5 +169,9 @@
       make a few sales, then <code>/__mock/online</code> and press Sync now.
     </p>
   </section>
+}
+
+@if (tab() === 'logs') {
+  <app-logs />
 }
 }

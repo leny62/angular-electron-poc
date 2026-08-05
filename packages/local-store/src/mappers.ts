@@ -18,6 +18,7 @@
  * serialisation boundary, so this is the one place the conversion is correct.
  */
 
+import type { LogComponent, LogLevel, LogSource } from './log-vocabulary';
 import type {
   CustomerRow,
   ReceiptRow,
@@ -26,6 +27,7 @@ import type {
   SaleRow,
   SalesCatalogRow,
   StockBalanceRow,
+  SystemLogRow,
   TaxCategoryRow,
 } from './rows';
 
@@ -417,4 +419,67 @@ export function rowToReceiptSummary(r: ReceiptRow): ReceiptSummaryDto {
     issuedAt: r.issued_at,
     hash: r.hash,
   };
+}
+
+// ---------------------------------------------------------------------------
+// System log
+// ---------------------------------------------------------------------------
+
+export interface SystemLogDto {
+  id: string;
+  seq: number;
+  loggedAt: string;
+  level: LogLevel;
+  component: LogComponent;
+  source: LogSource;
+  logger: string;
+  message: string;
+  exception: string | null;
+  userName: string | null;
+  url: string | null;
+  requestId: string | null;
+  code: string | null;
+  deviceId: string | null;
+  thread: string | null;
+  tenantId: string | null;
+  /**
+   * Parsed back into an object here rather than left as a string: the log
+   * viewer is the only consumer, and making every caller re-parse invites one
+   * of them to forget the try/catch and blank the whole table on one bad row.
+   */
+  context: Record<string, unknown> | null;
+}
+
+export function rowToSystemLog(r: SystemLogRow): SystemLogDto {
+  return {
+    id: r.id,
+    seq: r.seq,
+    loggedAt: r.logged_at,
+    level: r.level,
+    component: r.component,
+    source: r.source,
+    logger: r.logger,
+    message: r.message,
+    exception: r.exception,
+    userName: r.user_name,
+    url: r.url,
+    requestId: r.request_id,
+    code: r.code,
+    deviceId: r.device_id,
+    thread: r.thread,
+    tenantId: r.tenant_id,
+    context: parseContext(r.context),
+  };
+}
+
+function parseContext(raw: string | null): Record<string, unknown> | null {
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return typeof parsed === 'object' && parsed !== null
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
 }

@@ -209,6 +209,28 @@ export interface SyncCursorRow {
   hydrated: 0 | 1;
 }
 
+import type { LogComponent, LogLevel, LogSource } from './log-vocabulary';
+
+export interface SystemLogRow {
+  id: string;
+  seq: number;
+  logged_at: string;
+  level: LogLevel;
+  component: LogComponent;
+  source: LogSource;
+  logger: string;
+  message: string;
+  exception: string | null;
+  user_name: string | null;
+  url: string | null;
+  request_id: string | null;
+  code: string | null;
+  device_id: string | null;
+  thread: string | null;
+  tenant_id: string | null;
+  context: string | null;
+}
+
 export interface DeviceSessionRow {
   device_id: string;
   tenant_id: string;

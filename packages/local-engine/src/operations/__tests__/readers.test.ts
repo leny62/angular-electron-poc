@@ -87,6 +87,8 @@ describe('registry completeness', () => {
       'engineSignIn',
       'engineStatus',
       'engineSyncNow',
+      'listSystemLogs',
+      'writeSystemLogs',
     ]);
     const missing = ALL_ROUTES.filter((r) => !implemented.has(r.operationId));
     expect(missing.map((r) => r.operationId)).toEqual([]);

@@ -7,11 +7,14 @@
 
 import { TIER_1_TABLES } from '@bizuri/local-store';
 import type { EngineStateMachine } from '../domain/engine-state';
+import { getLogger, pruneLogs, withLogContext } from '../logging/logger';
 import { hydrate, hydratedTables, type HydrationStats } from '../remote/hydrate';
 import { pushOutbox, summariseOutbox, type PushStats } from '../remote/push-outbox';
 import { OfflineError, type RemoteClient } from '../remote/remote-client';
 import { pruneOutboxBackups } from '../store/migrations';
 import type { SqliteDatabase } from '../store/types';
+
+const log = getLogger('sync-worker', 'QUEUE_SERVICE');
 
 export type SyncState = 'IDLE' | 'SYNCING' | 'OFFLINE' | 'ERROR';
 
@@ -79,7 +82,16 @@ export class SyncWorker {
     return this.running;
   }
 
-  private async cycle(): Promise<SyncResult> {
+  private cycle(): Promise<SyncResult> {
+    // One correlation id per cycle, so every push, pull, and failure entry from
+    // this run can be pulled up together in the viewer by request id.
+    const cycleId = `sync-${Date.now().toString(36)}`;
+    return withLogContext({ requestId: cycleId, thread: 'sync-worker' }, () =>
+      this.runCycle(),
+    );
+  }
+
+  private async runCycle(): Promise<SyncResult> {
     const started = Date.now();
     const at = new Date().toISOString();
 
@@ -87,6 +99,9 @@ export class SyncWorker {
     const scope = this.config.scope();
 
     if (!client || !scope) {
+      // DEBUG, not WARN: before sign-in this is every cycle, and a warning that
+      // fires on a timer trains people to ignore warnings.
+      log.debug('Cycle skipped: no session', { code: 'NO_SESSION' });
       return this.finish({ at, durationMs: 0, offline: true, error: 'No session' });
     }
 
@@ -104,6 +119,11 @@ export class SyncWorker {
 
       if (push.wentOffline) {
         this.setState('OFFLINE');
+        log.warn('Push stopped: device is offline', {
+          code: 'OFFLINE',
+          tenantId: scope.tenantId,
+          context: { applied: push.applied, durationMs: Date.now() - started },
+        });
         return this.finish({ at, durationMs: Date.now() - started, push, offline: true });
       }
 
@@ -117,6 +137,11 @@ export class SyncWorker {
       // empty they are dead weight.
       if (summariseOutbox(db).pending === 0) pruneOutboxBackups(db);
 
+      // Log retention rides along with the cycle rather than owning a timer:
+      // it is housekeeping, and this is when the device is already awake and
+      // holding the write lock.
+      pruneLogs(db);
+
       this.consecutiveFailures = 0;
       this.setState('IDLE');
 
@@ -124,6 +149,17 @@ export class SyncWorker {
         this.config.engineState.markReady();
       }
       this.promoteIfHydrated(db);
+
+      log.info('Cycle complete', {
+        code: 'OK',
+        tenantId: scope.tenantId,
+        context: {
+          pushed: push.applied,
+          pulledRows: pull.totalRows,
+          pulledPages: pull.totalPages,
+          durationMs: Date.now() - started,
+        },
+      });
 
       return this.finish({ at, durationMs: Date.now() - started, push, pull, offline: false });
     } catch (err) {
@@ -139,6 +175,22 @@ export class SyncWorker {
           );
         }
       }
+
+      // An outage is expected operation for this app and logs as a warning; a
+      // real failure is an error. Conflating them makes the ERROR filter
+      // useless in exactly the shops that lose connectivity most.
+      const fields = {
+        exception: err,
+        code: offline ? 'OFFLINE' : 'E_INTERNAL',
+        tenantId: scope.tenantId,
+        context: {
+          consecutiveFailures: this.consecutiveFailures,
+          durationMs: Date.now() - started,
+        },
+      };
+
+      if (offline) log.warn('Cycle stopped: device is offline', fields);
+      else log.error('Cycle failed', err, fields);
 
       return this.finish({
         at,

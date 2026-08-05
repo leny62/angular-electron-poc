@@ -168,9 +168,18 @@ describe('unlock requirements', () => {
     }
   });
 
-  it('allows only engine status, unlock, and sign-in while locked', () => {
+  it('allows only session and diagnostic operations while locked', () => {
+    // The log operations are reachable while LOCKED on purpose: the entries
+    // worth reading in that state are the ones explaining why the engine never
+    // left it. Neither touches tenant data — `system_logs` has no tenant scope.
     const open = ENGINE_ROUTES.filter((r) => !r.requiresUnlock).map((r) => r.operationId);
-    expect(open.sort()).toEqual(['engineSignIn', 'engineStatus', 'engineUnlock']);
+    expect(open.sort()).toEqual([
+      'engineSignIn',
+      'engineStatus',
+      'engineUnlock',
+      'listSystemLogs',
+      'writeSystemLogs',
+    ]);
   });
 
   it('keeps the unlock rate limit low enough to blunt guessing', () => {

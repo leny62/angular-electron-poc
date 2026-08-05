@@ -13,8 +13,15 @@ import {
   type RegistryEntry,
 } from './gateway/gateway';
 import { expectedOrigin } from './gateway/sender-verification';
+import {
+  configureLogging,
+  getLogger,
+  shutdownLogging,
+  type LoggingConfig,
+} from './logging/logger';
 import { makeCreateSale } from './operations/create-sale';
 import { makeEngineOps } from './operations/engine-ops';
+import { makeLogOps } from './operations/log-ops';
 import { buildReaders } from './operations/read-configs';
 import { makeCancelSale, makeConfirmSale, makeCreateCustomer } from './operations/sale-ops';
 import { hydrate } from './remote/hydrate';
@@ -80,6 +87,11 @@ export interface LocalEngineConfig {
   readonly credentials?: Credentials;
   /** Start the periodic sync cycle once the engine is operational. */
   readonly autoStartSync?: boolean;
+  /**
+   * Diagnostic logging. Defaults are production-sane, so a host that does not
+   * care passes nothing; `db` and `deviceId` are supplied by the engine.
+   */
+  readonly logging?: Omit<LoggingConfig, 'db' | 'deviceId'>;
 }
 
 export interface LocalEngine {
@@ -101,6 +113,18 @@ export function createLocalEngine(config: LocalEngineConfig): LocalEngine {
   let migration: MigrationResult | null = null;
   let client: RemoteClient | null = null;
   let session: Session | null = null;
+
+  // First thing, before anything can fail. Entries logged while the database is
+  // still closed are held in memory and written once it opens, so a failure
+  // during startup is still readable in the viewer afterwards.
+  configureLogging({
+    ...config.logging,
+    db: () => db,
+    deviceId: config.deviceId,
+  });
+
+  const log = getLogger('engine');
+  const deviceLog = getLogger('engine.device', 'DEVICE_SERVICE');
 
   const requireDb = (): SqliteDatabase => {
     if (!db) throw new Error('Engine is locked. Unlock before use.');
@@ -125,6 +149,7 @@ export function createLocalEngine(config: LocalEngineConfig): LocalEngine {
   async function unlock(passphrase: string): Promise<void> {
     if (db) return;
 
+    const startedAt = Date.now();
     const material = deriveKey(passphrase, salt);
     try {
       connection = new ConnectionManager({
@@ -134,10 +159,30 @@ export function createLocalEngine(config: LocalEngineConfig): LocalEngine {
       const opened = connection.open();
       db = opened.db;
       migration = opened.migration;
+    } catch (err) {
+      deviceLog.error('Failed to open the local store', err, {
+        code: 'E_STORAGE',
+        context: { encrypted: !config.unencrypted },
+      });
+      throw err;
     } finally {
       zeroBuffer(material.key);
       zeroBuffer(material.verifier);
     }
+
+    deviceLog.info('Local store opened', {
+      code: 'OK',
+      context: {
+        encrypted: !config.unencrypted,
+        durationMs: Date.now() - startedAt,
+        schemaFrom: migration.fromVersion,
+        schemaTo: migration.toVersion,
+        created: migration.created,
+        rebuilt: migration.rebuilt,
+        migrated: migration.migrated,
+        needsHydration: migration.needsHydration,
+      },
+    });
 
     // Tables that were just created or rebuilt hold nothing, so the POS must not
     // read them as though they were current.
@@ -161,22 +206,56 @@ export function createLocalEngine(config: LocalEngineConfig): LocalEngine {
     const activeScope = scope();
     if (!activeClient || !activeScope || !db) return;
 
+    const startedAt = Date.now();
     try {
-      await hydrate(db, activeClient, activeScope, {
+      const result = await hydrate(db, activeClient, activeScope, {
         onProgress: (t) => emitEvent(config.mainWindow, 'hydration.progress', t),
+      });
+      log.info('Hydration complete', {
+        code: 'OK',
+        context: {
+          rows: result.totalRows,
+          pages: result.totalPages,
+          failed: result.failed,
+          durationMs: Date.now() - startedAt,
+        },
       });
       state.markReady();
     } catch (err) {
       // Hydration failing is not fatal. Whatever is already local is still
       // sellable, and the sync worker will retry.
-      console.warn('[engine] hydration failed:', err);
+      log.warn('Hydration failed; selling from the existing local replica', {
+        exception: err,
+        code: 'E_STORAGE',
+        context: { durationMs: Date.now() - startedAt },
+      });
       state.markReady();
     }
   }
 
   async function signIn(credentials: Credentials): Promise<Session> {
     client ??= new RemoteClient({ baseUrl: config.apiBaseUrl });
-    session = await client.login(credentials);
+
+    try {
+      session = await client.login(credentials);
+    } catch (err) {
+      // The email is recorded; the password is not, and never reaches a field
+      // that is written to disk.
+      log.warn('Sign-in failed', {
+        exception: err,
+        code: 'E_FORBIDDEN',
+        userName: credentials.email,
+        context: { slug: credentials.subdomainSlug, api: config.apiBaseUrl },
+      });
+      throw err;
+    }
+
+    log.info('Signed in', {
+      code: 'OK',
+      userName: credentials.email,
+      tenantId: session.tenantId,
+      context: { branchId: session.branchId, slug: credentials.subdomainSlug },
+    });
 
     // Seed the device_session row so the receipt chain can issue receipts.
     // In production this row comes from a device-registration API call; for
@@ -215,8 +294,12 @@ export function createLocalEngine(config: LocalEngineConfig): LocalEngine {
 
   const readers = buildReaders(requireDb);
 
+  const logOps = makeLogOps({ db: () => db, deviceId: config.deviceId });
+
   const entries: RegistryEntry[] = [
     ...Object.entries(readers).map(([operationId, handler]) => ({ operationId, handler })),
+    { operationId: 'listSystemLogs', handler: logOps.listSystemLogs },
+    { operationId: 'writeSystemLogs', handler: logOps.writeSystemLogs },
     { operationId: 'createSale', handler: makeCreateSale(writeDeps) },
     { operationId: 'confirmSale', handler: makeConfirmSale(writeDeps) },
     { operationId: 'cancelSale', handler: makeCancelSale(writeDeps) },
@@ -237,12 +320,22 @@ export function createLocalEngine(config: LocalEngineConfig): LocalEngine {
   });
 
   async function start(): Promise<void> {
+    log.info('Engine starting', {
+      code: 'OK',
+      context: {
+        api: config.apiBaseUrl,
+        dev: config.isDev,
+        encrypted: !config.unencrypted,
+        contractVersion: CONTRACT_VERSION,
+      },
+    });
+
     if (config.credentials) {
       try {
         await signIn(config.credentials);
-      } catch (err) {
+      } catch {
         // Selling from whatever is already local beats refusing to start.
-        console.warn('[engine] startup sign-in failed:', err);
+        // `signIn` already logged the cause.
       }
     }
 
@@ -269,7 +362,9 @@ export function createLocalEngine(config: LocalEngineConfig): LocalEngine {
     if (config.autoStartSync) sync.start();
   }
 
-  void start();
+  void start().catch((err: unknown) => {
+    log.fatal('Engine failed to start', err, { code: 'E_INTERNAL' });
+  });
 
   return {
     state,
@@ -282,6 +377,11 @@ export function createLocalEngine(config: LocalEngineConfig): LocalEngine {
       sync.stop();
       unregister();
       state.markDraining();
+      log.info('Engine shutting down', { code: 'OK' });
+      // Before the connection closes: the flush needs an open database, and
+      // "shutting down" is the line that tells a support engineer the previous
+      // session ended cleanly rather than crashing.
+      shutdownLogging();
       connection?.close();
       db = null;
     },

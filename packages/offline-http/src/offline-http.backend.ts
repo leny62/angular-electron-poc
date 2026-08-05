@@ -15,9 +15,10 @@ import {
   HttpResponse,
   HttpXhrBackend,
 } from '@angular/common/http';
-import { Observable, from, switchMap, throwError } from 'rxjs';
+import { Observable, from, switchMap, tap, throwError } from 'rxjs';
 import { compileRoutes, type CompiledRoute } from '@bizuri/local-store/browser';
 import { LocalEngineService } from './local-engine.service';
+import { LoggingService } from './logger.service';
 
 export interface LocalBridge {
   readonly available: true;
@@ -51,6 +52,8 @@ const FORWARDED_HEADERS = ['X-Tenant-Id', 'X-Branch-Id', 'Idempotency-Key'] as c
 export class OfflineHttpBackend implements HttpBackend {
   private readonly network = inject(HttpXhrBackend);
   private readonly engine = inject(LocalEngineService);
+  private readonly logging = inject(LoggingService);
+  private readonly log = this.logging.getLogger('offline-http.backend');
   private readonly routes: readonly CompiledRoute[] = compileRoutes();
 
   handle(req: HttpRequest<unknown>): Observable<HttpEvent<unknown>> {
@@ -64,7 +67,17 @@ export class OfflineHttpBackend implements HttpBackend {
     // network in dev hits the Angular dev server, which returns index.html and
     // produces a confusing "Request failed (200)" parse error. Return a clear
     // message instead so the developer knows exactly what's missing.
-    if (!this.engine.status().tenantId) {
+    //
+    // Operations declaring `requiresUnlock: false` are exempt. They are the
+    // ones designed to work without a session — status, unlock, sign-in, and
+    // the log viewer — and gating the log viewer behind a session would hide
+    // the entries explaining why the session never happened.
+    if (match.requiresUnlock && !this.engine.status().tenantId) {
+      this.log.warn('Request refused: engine has no tenant session', {
+        code: '503',
+        url: req.urlWithParams,
+        context: { operationId: match.operationId, method: req.method },
+      });
       return throwError(
         () =>
           new HttpErrorResponse({
@@ -80,14 +93,44 @@ export class OfflineHttpBackend implements HttpBackend {
       );
     }
 
-    return from(bridge.request(this.toEnvelope(req, match))).pipe(
+    // The envelope id is generated here so it can be logged on this side and
+    // arrive on the engine side as the same value. That shared id is what lets
+    // the viewer show a UI action and the SQL it caused as one story.
+    const envelope = this.toEnvelope(req, match);
+    const requestId = envelope['id'] as string;
+    const started = Date.now();
+
+    return from(bridge.request(envelope)).pipe(
+      tap((response) => {
+        // Successes are left to the engine, which already records them with the
+        // same id. Only the failure is logged twice, deliberately: the renderer
+        // knows the real URL and the engine knows the SQL, and during an
+        // incident you want both.
+        if (!response.ok) {
+          this.log.warn(`Local request failed: ${match.operationId}`, {
+            requestId,
+            code: response.code ?? String(response.status),
+            url: req.urlWithParams,
+            context: {
+              method: req.method,
+              status: response.status,
+              message: response.message,
+              durationMs: Date.now() - started,
+            },
+          });
+        }
+      }),
       switchMap((response) => this.toHttpEvent(req, response)),
     );
   }
 
   private match(
     req: HttpRequest<unknown>,
-  ): { operationId: string; pathParams: Record<string, string> } | null {
+  ): {
+    operationId: string;
+    pathParams: Record<string, string>;
+    requiresUnlock: boolean;
+  } | null {
     let path: string;
     try {
       // Relative urls are common once a base-href interceptor has run.
@@ -105,7 +148,11 @@ export class OfflineHttpBackend implements HttpBackend {
       compiled.paramNames.forEach((name, i) => {
         pathParams[name] = decodeURIComponent(m[i + 1] ?? '');
       });
-      return { operationId: compiled.route.operationId, pathParams };
+      return {
+        operationId: compiled.route.operationId,
+        pathParams,
+        requiresUnlock: compiled.route.requiresUnlock,
+      };
     }
     return null;
   }
