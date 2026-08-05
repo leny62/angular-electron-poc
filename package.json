@@ -8,28 +8,30 @@
     "ng": "ng",
     "start": "ng serve",
     "build": "ng build",
-    "build:electron": "tsc -p electron/tsconfig.json",
-    "build:all": "npm run build && npm run build:electron",
+    "build:packages": "tsc -b packages/local-store packages/local-engine packages/offline-http",
+    "clean:packages": "tsc -b packages/local-store packages/local-engine packages/offline-http --clean",
+    "build:electron": "npm run build:packages && npm run typecheck:electron && node scripts/build-electron.mjs",
+    "build:all": "npm run build:packages && npm run build && npm run typecheck:electron && node scripts/build-electron.mjs",
     "watch": "ng build --watch --configuration development",
+    "rebuild:node": "npm rebuild better-sqlite3-multiple-ciphers",
+    "rebuild:electron": "electron-rebuild -f -w better-sqlite3-multiple-ciphers",
     "test": "ng test",
-    "test:electron": "jest --config electron/jest.config.js",
-    "test:electron:coverage": "jest --config electron/jest.config.js --coverage",
-    "test:packages": "jest --config packages/jest.config.js",
+    "test:packages": "npm run rebuild:node --silent && jest --config packages/jest.config.js",
     "test:packages:coverage": "jest --config packages/jest.config.js --coverage",
-    "test:all": "npm run test:packages && npm run test:electron",
-    "build:packages": "tsc -b packages/local-engine",
-    "clean:packages": "tsc -b packages/local-engine --clean",
+    "test:all": "npm run test:packages",
     "mock:api": "ts-node --project scripts/tsconfig.json scripts/mock-api.ts",
-    "e2e:offline": "ts-node --project scripts/tsconfig.json scripts/e2e-offline.ts",
+    "e2e:offline": "npm run rebuild:node --silent && ts-node --project scripts/tsconfig.json scripts/e2e-offline.ts",
     "conformance": "ts-node --project scripts/tsconfig.json scripts/conformance.ts",
     "smoke:mock": "BIZURI_API=http://localhost:4300 BIZURI_EMAIL=demo@bizuri.test BIZURI_PASSWORD=mockpassword123 BIZURI_SLUG=demo npm run smoke:live",
     "smoke:live": "ts-node --project scripts/tsconfig.json scripts/smoke-live.ts",
     "smoke:dry": "BIZURI_DRY_RUN=1 npm run smoke:live",
-    "electron:dev": "concurrently \"ng serve\" \"wait-on http://localhost:4200 && tsc -p electron/tsconfig.json && electron .\"",
+    "electron:dev": "npm run rebuild:electron --silent && npm run build:electron:dev && concurrently \"ng serve\" \"wait-on http://localhost:4200 && electron .\"",
     "electron:prod": "npm run build:all && electron .",
     "electron:package": "npm run build:all && electron-builder",
-    "postinstall": "electron-rebuild -f -w better-sqlite3-multiple-ciphers",
-    "serve:ssr:angular-electron-poc": "node dist/angular-electron-poc/server/server.mjs"
+    "dev:offline": "BIZURI_API=http://localhost:4300 BIZURI_EMAIL=demo@bizuri.test BIZURI_PASSWORD=mockpassword123 BIZURI_SLUG=demo concurrently \"npm:mock:api\" \"npm:electron:dev\"",
+    "serve:ssr:angular-electron-poc": "node dist/angular-electron-poc/server/server.mjs",
+    "typecheck:electron": "tsc -p electron/tsconfig.json --noEmit",
+    "build:electron:dev": "npm run build:packages && node scripts/build-electron.mjs --dev"
   },
   "dependencies": {
     "@angular/animations": "^18.0.0",
@@ -99,5 +101,8 @@
         "AppImage"
       ]
     }
-  }
+  },
+  "workspaces": [
+    "packages/*"
+  ]
 }

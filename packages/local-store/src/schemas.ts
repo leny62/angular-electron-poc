@@ -453,6 +453,27 @@ export const REQUEST_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
     },
   },
 
+  engineSignIn: {
+    type: 'object',
+    required: ['body'],
+    additionalProperties: false,
+    properties: {
+      headers: tenantHeader,
+      pathParams: { type: 'object', additionalProperties: false },
+      query: { type: 'object', additionalProperties: false },
+      body: {
+        type: 'object',
+        required: ['email', 'password', 'subdomainSlug'],
+        additionalProperties: false,
+        properties: {
+          email: { type: 'string', minLength: 1 },
+          password: { type: 'string', minLength: 1 },
+          subdomainSlug: { type: 'string', minLength: 1 },
+        },
+      },
+    },
+  },
+
   engineStatus: {
     type: 'object',
     additionalProperties: false,

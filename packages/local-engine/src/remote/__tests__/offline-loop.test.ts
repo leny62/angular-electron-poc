@@ -400,7 +400,7 @@ describe('selling offline', () => {
 
   it('computes tax-inclusive totals correctly', () => {
     // 500 gross at 18% inclusive: net = 500/1.18 = 423.7288, tax = 76.2712
-    const sale = sell().data;
+    const sale = (sell().data as any).data;
     expect(sale.grandTotal).toBeCloseTo(500, 4);
     expect(sale.subtotal).toBeCloseTo(423.7288, 4);
     expect(sale.taxTotal).toBeCloseTo(76.2712, 4);
@@ -409,7 +409,7 @@ describe('selling offline', () => {
   });
 
   it('handles a zero-rated item without inventing tax', () => {
-    const sale = sell({ itemId: ITEM_B, quantity: '1', amount: '1200' }).data;
+    const sale = (sell({ itemId: ITEM_B, quantity: '1', amount: '1200' }).data as any).data;
     expect(sale.taxTotal).toBe(0);
     expect(sale.subtotal).toBeCloseTo(1200, 4);
   });
@@ -451,8 +451,8 @@ describe('selling offline', () => {
   });
 
   it('returns the original sale on a repeated idempotency key', () => {
-    const first = sell({ key: 'dup-key' }).data;
-    const second = sell({ key: 'dup-key' }).data;
+    const first = (sell({ key: 'dup-key' }).data as any).data;
+    const second = (sell({ key: 'dup-key' }).data as any).data;
 
     expect(second.id).toBe(first.id);
     const count = db.prepare('SELECT count(*) AS c FROM sales').get() as { c: number };
@@ -515,7 +515,7 @@ describe('reconnect and push', () => {
 
   it('drains the outbox and adopts server ids', async () => {
     state.offline = true;
-    const local = sell().data;
+    const local = (sell().data as any).data;
     state.offline = false;
 
     const push = await pushOutbox(db, client, pushConfig);
@@ -650,7 +650,7 @@ describe('full loop', () => {
     // 3. Sell through the shift. 10 Fanta available, so 8 sales of 1.
     const localSales: string[] = [];
     for (let i = 0; i < 8; i++) {
-      localSales.push(sell({ key: `loop-${i}` }).data.id);
+      localSales.push((sell({ key: `loop-${i}` }).data as any).data.id);
     }
 
     expect(summariseOutbox(db).pending).toBe(8);

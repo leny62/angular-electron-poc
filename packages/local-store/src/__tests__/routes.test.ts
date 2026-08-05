@@ -168,9 +168,9 @@ describe('unlock requirements', () => {
     }
   });
 
-  it('allows only engine status and unlock while locked', () => {
+  it('allows only engine status, unlock, and sign-in while locked', () => {
     const open = ENGINE_ROUTES.filter((r) => !r.requiresUnlock).map((r) => r.operationId);
-    expect(open.sort()).toEqual(['engineStatus', 'engineUnlock']);
+    expect(open.sort()).toEqual(['engineSignIn', 'engineStatus', 'engineUnlock']);
   });
 
   it('keeps the unlock rate limit low enough to blunt guessing', () => {

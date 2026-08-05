@@ -145,3 +145,24 @@ export type {
   PushOutcome,
   PushStats,
 } from './remote/push-outbox';
+
+// Preload
+export { exposeLocalBridge } from './gateway/preload';
+export type { ExposeOptions } from './gateway/preload';
+
+// Bootstrap
+export { createLocalEngine } from './engine';
+export type { LocalEngine, LocalEngineConfig } from './engine';
+
+// Operations
+export { makeCancelSale, makeConfirmSale, makeCreateCustomer } from './operations/sale-ops';
+export type { WriteDeps } from './operations/sale-ops';
+export { makeEngineOps } from './operations/engine-ops';
+export type { EngineOpsDeps } from './operations/engine-ops';
+export { buildReaders } from './operations/read-configs';
+export { makeReplicaGet, makeReplicaList } from './operations/replica-readers';
+export type { Envelope, GetConfig, ListConfig } from './operations/replica-readers';
+
+// Sync
+export { SyncWorker } from './sync/sync-worker';
+export type { SyncResult, SyncState, SyncWorkerConfig } from './sync/sync-worker';

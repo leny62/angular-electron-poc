@@ -207,6 +207,14 @@ export const ENGINE_ROUTES: readonly RouteDescriptor[] = [
     requiresUnlock: false,
   },
   {
+    operationId: 'engineSignIn',
+    method: 'POST',
+    path: '/_engine/signin',
+    kind: 'handwritten',
+    rateLimit: 10, // deliberately low: this is an authentication attempt
+    requiresUnlock: false,
+  },
+  {
     operationId: 'engineSyncNow',
     method: 'POST',
     path: '/_engine/sync',

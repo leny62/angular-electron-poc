@@ -87,7 +87,7 @@ export function makeCreateSale(deps: CreateSaleDeps) {
   const now = deps.now ?? (() => new Date().toISOString());
   const newId = deps.newId ?? (() => randomUUID());
 
-  return function createSale(ctx: OperationContext): OperationResult<SaleDto> {
+  return function createSale(ctx: OperationContext): OperationResult<unknown> {
     const { db } = deps;
     const body = ctx.request.body as CreateSaleBody;
     const tenantId = ctx.tenantId;
@@ -339,7 +339,13 @@ export function makeCreateSale(deps: CreateSaleDeps) {
     });
 
     const sale = run();
-    return { status: 201, data: sale, durableAt: now() };
+    // Wrap in the same envelope the real API uses so the renderer's
+    // `res?.data` accessor works identically for local and remote responses.
+    return {
+      status: 201,
+      data: { success: true, message: 'Request successful', data: sale },
+      durableAt: now(),
+    };
   };
 }
 

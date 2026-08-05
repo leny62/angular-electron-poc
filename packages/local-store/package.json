@@ -4,9 +4,23 @@
   "description": "Offline local-store contract for Bizuri. HAND-WRITTEN PLACEHOLDER for the output of the bizuri-sqlite OpenAPI generator.",
   "license": "UNLICENSED",
   "private": true,
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
     "verify": "ts-node src/tools/verify-manifest.ts"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "default": "./dist/browser.js"
+    },
+    "./constants": {
+      "types": "./dist/manifest-constants.d.ts",
+      "default": "./dist/manifest-constants.js"
+    }
   }
 }

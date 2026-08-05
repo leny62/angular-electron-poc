@@ -2,23 +2,45 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "commonjs",
-    "lib": ["ES2022"],
-    "outDir": "../dist/electron",
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
     "rootDir": ".",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "declaration": false,
     "sourceMap": true,
     "moduleResolution": "node",
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
+    "baseUrl": "..",
     "paths": {
-      "@shared/*": ["../src/app/core/interfaces/*"]
+      "@bizuri/local-store": [
+        "packages/local-store/dist/index.d.ts"
+      ],
+      "@bizuri/local-engine": [
+        "packages/local-engine/dist/index.d.ts"
+      ],
+      "@bizuri/local-store/constants": [
+        "packages/local-store/dist/manifest-constants.d.ts"
+      ],
+      "@bizuri/local-engine/preload": [
+        "packages/local-engine/dist/gateway/preload.d.ts"
+      ]
     },
-    "baseUrl": "."
+    "noEmit": true
   },
-  "include": ["./**/*.ts"],
-  "exclude": ["node_modules", "**/__tests__", "**/__mocks__"]
+  "include": [
+    "main.ts",
+    "preload.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "**/__tests__",
+    "**/__mocks__"
+  ]
 }

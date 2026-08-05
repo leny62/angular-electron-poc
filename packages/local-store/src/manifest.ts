@@ -21,28 +21,10 @@
  */
 
 import { hashAllTables } from './ddl';
+import { CONTRACT_VERSION, LOCAL_SCHEMA_VERSION } from './manifest-constants';
 import type { LocalStoreManifest } from './types';
 
-/**
- * Bumped by the generator when emitted DDL changes.
- *
- * Independent of `CONTRACT_VERSION` on purpose.  An additive contract change
- * (a new optional response field) bumps the contract version but not this;
- * adding a local index bumps this but not the contract version.  Coupling them
- * would force pointless migrations on every contract release.
- */
-export const LOCAL_SCHEMA_VERSION = 1;
-
-/**
- * The `@bizuri/api-client` version this store was generated against.
- *
- * Read from the npm/Maven artifact version, NOT from the spec's `info.version`.
- * The core contract's `info.version` is stale at `1.0.0` while the published
- * artifact is at `1.2.29` — trusting `info.version` would make every handshake
- * compare against a constant and the compatibility gate would never fire.
- * That mismatch is contract gap #5 in the plan.
- */
-export const CONTRACT_VERSION = '1.2.29';
+export { CONTRACT_VERSION, LOCAL_SCHEMA_VERSION } from './manifest-constants';
 
 let cached: LocalStoreManifest | null = null;
 
