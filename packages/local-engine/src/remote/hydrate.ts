@@ -85,6 +85,14 @@ export const HYDRATION_ENDPOINTS: readonly HydrationEndpoint[] = [
     supportsIncremental: false,
     pageSize: 100,
   },
+  {
+    table: 'sales',
+    path: '/core/sales',
+    operationId: 'listSales',
+    branchScoped: true,
+    supportsIncremental: false,
+    pageSize: 50,
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -227,6 +235,14 @@ async function hydrateTable(
 }
 
 function clearReplica(db: SqliteDatabase, table: string, scope: HydrationScope): void {
+  // Write-through tables hold locally-created rows that must survive the pull.
+  // Clearing them would delete unsynced sales, customers, and lines before the
+  // upsert has a chance to apply its SYNCED-only guard. Those tables rely on
+  // INSERT ON CONFLICT DO UPDATE ... WHERE sync_state = 'SYNCED' instead.
+  if (table === 'customers' || table === 'sales' || table === 'sale_lines' || table === 'sale_payments') {
+    return;
+  }
+
   // Scoped delete, never a bare DELETE FROM: a device could legitimately hold
   // more than one branch, and wiping another branch's rows would be silent.
   if (table === 'sales_catalog' || table === 'stock_balances') {
@@ -263,6 +279,8 @@ function upsert(
       return upsertTaxCategory(db, item as TaxCategoryDto, scope, pulledAt);
     case 'customers':
       return upsertCustomer(db, item as CustomerDto, scope, pulledAt);
+    case 'sales':
+      return upsertSale(db, item as Record<string, unknown>, scope);
     default:
       throw new Error(`No upsert defined for table "${table}".`);
   }
@@ -285,7 +303,7 @@ function upsertSalesCatalog(
        tax_category_rate, unit_of_measure_name, current_batch_id,
        updated_at, deleted, _pulled_at
      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-     ON CONFLICT(item_id, branch_id) DO UPDATE SET
+     ON CONFLICT(tenant_id, branch_id, item_id) DO UPDATE SET
        item_code = excluded.item_code,
        item_name = excluded.item_name,
        barcode = excluded.barcode,
@@ -331,7 +349,7 @@ function upsertStockBalance(
        has_batches, default_selling_price, discount, tax_category_name,
        tax_category_rate, batch_id, expired, updated_at, deleted, _pulled_at
      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-     ON CONFLICT(item_id, branch_id) DO UPDATE SET
+     ON CONFLICT(tenant_id, branch_id, item_id) DO UPDATE SET
        item_code = excluded.item_code,
        item_name = excluded.item_name,
        business_type = excluded.business_type,
@@ -375,7 +393,7 @@ function upsertTaxCategory(
        tenant_id, id, name, rate, description, status,
        created_at, updated_at, deleted, _pulled_at
      ) VALUES (?,?,?,?,?,?,?,?,?,?)
-     ON CONFLICT(id) DO UPDATE SET
+     ON CONFLICT(tenant_id, id) DO UPDATE SET
        name = excluded.name,
        rate = excluded.rate,
        description = excluded.description,
@@ -411,7 +429,7 @@ function upsertCustomer(
        tenant_id, id, name, tin, primary_phone, secondary_phone, email, address,
        status, created_at, updated_at, deleted, server_id, sync_state, local_seq
      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,0,?, 'SYNCED', 0)
-     ON CONFLICT(id) DO UPDATE SET
+     ON CONFLICT(tenant_id, id) DO UPDATE SET
        name = excluded.name,
        tin = excluded.tin,
        primary_phone = excluded.primary_phone,
@@ -429,6 +447,131 @@ function upsertCustomer(
     dto.createdAt ?? pulledAt, dto.updatedAt ?? pulledAt, dto.id,
   );
   return 1;
+}
+
+/**
+ * Sales are `write-through`, same conflict-detection rule as customers: a pull
+ * must never overwrite a locally created sale whose outbox row is still PENDING.
+ *
+ * Children (lines, payments) are replaced wholesale for SYNCED sales. A PENDING
+ * sale is not touched at all: the WHERE guard on the parent UPDATE prevents it,
+ * and the sale will not appear in the server response anyway because it has not
+ * been pushed.
+ */
+function upsertSale(
+  db: SqliteDatabase,
+  dto: Record<string, unknown>,
+  scope: HydrationScope,
+): number {
+  const id = String(dto['id'] ?? '');
+  if (!id) return 0;
+
+  const client = dto['client'] as Record<string, unknown> | undefined | null;
+
+  db.prepare(
+    `INSERT INTO sales (
+       tenant_id, id, sale_number, branch_id, status, customer_id,
+       client_full_name, client_tin, client_phone, device_id, credit_due_date,
+       subtotal, discount_total, tax_total, grand_total, amount_paid,
+       change_given, balance_due, total_items, confirmed_at, created_at,
+       currency_code, has_pending_refunds, total_refunded_amount,
+       server_id, sync_state, local_seq, idempotency_key
+     ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'SYNCED', 0, NULL)
+     ON CONFLICT(id) DO UPDATE SET
+       sale_number = excluded.sale_number,
+       status = excluded.status,
+       customer_id = excluded.customer_id,
+       client_full_name = excluded.client_full_name,
+       client_tin = excluded.client_tin,
+       client_phone = excluded.client_phone,
+       device_id = excluded.device_id,
+       credit_due_date = excluded.credit_due_date,
+       subtotal = excluded.subtotal,
+       discount_total = excluded.discount_total,
+       tax_total = excluded.tax_total,
+       grand_total = excluded.grand_total,
+       amount_paid = excluded.amount_paid,
+       change_given = excluded.change_given,
+       balance_due = excluded.balance_due,
+       total_items = excluded.total_items,
+       confirmed_at = excluded.confirmed_at,
+       currency_code = excluded.currency_code,
+       has_pending_refunds = excluded.has_pending_refunds,
+       total_refunded_amount = excluded.total_refunded_amount,
+       server_id = excluded.server_id
+     WHERE sales.sync_state = 'SYNCED'`,
+  ).run(
+    scope.tenantId, id, String(dto['saleNumber'] ?? ''),
+    scope.branchId, String(dto['status'] ?? 'CONFIRMED'),
+    dto['customerId'] ? String(dto['customerId']) : null,
+    client?.['fullName'] ? String(client['fullName']) : null,
+    client?.['tin'] ? String(client['tin']) : null,
+    client?.['phone'] ? String(client['phone']) : null,
+    dto['deviceId'] ? String(dto['deviceId']) : null,
+    dto['creditDueDate'] ? String(dto['creditDueDate']) : null,
+    dec(dto['subtotal']), dec(dto['discountTotal']), dec(dto['taxTotal']),
+    dec(dto['grandTotal']), dec(dto['amountPaid']), dec(dto['changeGiven']),
+    dec(dto['balanceDue']), dec(dto['totalItems']),
+    dto['confirmedAt'] ? String(dto['confirmedAt']) : null,
+    String(dto['createdAt'] ?? ''),
+    dto['currencyCode'] ? String(dto['currencyCode']) : null,
+    dto['hasPendingRefunds'] != null ? (dto['hasPendingRefunds'] ? 1 : 0) : null,
+    dto['totalRefundedAmount'] != null ? dec(dto['totalRefundedAmount']) : null,
+    id,
+  );
+
+  // Replace children. The server's version always wins for SYNCED sales, and a
+  // PENDING local sale would not appear in the server response at all (it has
+  // not been pushed), so a blind delete-then-insert is safe.
+  db.prepare('DELETE FROM sale_lines WHERE sale_id = ?').run(id);
+  db.prepare('DELETE FROM sale_payments WHERE sale_id = ?').run(id);
+
+  const lines = dto['lines'] as readonly Record<string, unknown>[] | undefined;
+  if (lines) {
+    let lineNo = 1;
+    for (const line of lines) {
+      db.prepare(
+        `INSERT INTO sale_lines (
+           sale_id, id, item_id, item_name, batch_id, quantity, unit_price,
+           discount_percentage, discount_amount, tax_amount, line_subtotal,
+           line_total, uom, line_no
+         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      ).run(
+        id, String(line['id'] ?? ''), String(line['itemId'] ?? ''),
+        String(line['itemName'] ?? ''), line['batchId'] ? String(line['batchId']) : null,
+        dec(line['quantity']), dec(line['unitPrice']),
+        line['discountPercentage'] != null ? dec(line['discountPercentage']) : '0',
+        dec(line['discountAmount'] ?? '0'), dec(line['taxAmount'] ?? '0'),
+        dec(line['lineSubtotal'] ?? '0'), dec(line['lineTotal'] ?? '0'),
+        line['uom'] ? String(line['uom']) : null, lineNo,
+      );
+      lineNo++;
+    }
+  }
+
+  const payments = dto['payments'] as readonly Record<string, unknown>[] | undefined;
+  if (payments) {
+    let payIdx = 0;
+    for (const pay of payments) {
+      db.prepare(
+        `INSERT INTO sale_payments (id, sale_id, method, amount)
+         VALUES (?,?,?,?)`,
+      ).run(
+        id + ':pay:' + payIdx, id, String(pay['method'] ?? 'CASH'),
+        dec(pay['amount']),
+      );
+      payIdx++;
+    }
+  }
+
+  return 1;
+}
+
+/** Server money fields arrive as JSON numbers; store them as decimal strings. */
+function dec(value: unknown): string {
+  if (value == null) return '0';
+  if (typeof value === 'string') return value;
+  return String(value);
 }
 
 // ---------------------------------------------------------------------------

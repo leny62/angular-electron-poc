@@ -31,10 +31,8 @@ export interface RemoteConfig {
   /**
    * API base URL, no trailing slash.
    *
-   * NOTE: the live host is `api.bizuri.testing.eccellenza.tech`. The frontend's
-   * `environment.ts` files and the contract's server enum both still name
-   * `bizuri-api.testing.eccellenza.tech`, which now returns a Cloudflare 525.
-   * The host moved; those references are stale and worth correcting upstream.
+   * Set via `BIZURI_API`; there is no default so deployment targets are never
+   * committed to the repo.
    */
   readonly baseUrl: string;
   readonly timeoutMs?: number;

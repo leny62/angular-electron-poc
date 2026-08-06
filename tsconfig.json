@@ -23,14 +23,8 @@
     ],
     "baseUrl": ".",
     "paths": {
-      "@bizuri/local-store": [
-        "packages/local-store/src/index.ts"
-      ],
       "@bizuri/offline-http": [
         "packages/offline-http/src/index.ts"
-      ],
-      "@bizuri/local-store/browser": [
-        "packages/local-store/src/browser.ts"
       ]
     }
   },

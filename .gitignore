@@ -53,5 +53,8 @@ packages/*/dist/
 # Packaged installers (483 MB of build output, never commit)
 release/
 
+# Documentation (kept local, not versioned)
+docs/
+
 # Editor and cloud-sync temp files
 .!*!*

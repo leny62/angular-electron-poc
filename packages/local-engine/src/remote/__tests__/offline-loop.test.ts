@@ -142,6 +142,11 @@ function makeFakeApi(state: FakeServerState): typeof fetch {
       return jsonResponse(200, wrappedPage([], 0, 0, 1));
     }
 
+    // --- sales: WRAPPED envelope ---
+    if (path === '/core/sales' && method === 'GET') {
+      return jsonResponse(200, wrappedPage([], 0, 0, 1));
+    }
+
     // --- create sale, with real idempotency semantics ---
     if (path === '/core/sales' && method === 'POST') {
       const key = headers['Idempotency-Key'];
@@ -387,7 +392,7 @@ describe('hydration from the live-shaped API', () => {
 
   it('keeps going when one table fails', async () => {
     const stats = await hydrate(db, client, { tenantId: TENANT, branchId: BRANCH });
-    expect(stats.tables.length).toBe(4);
+    expect(stats.tables.length).toBe(5);
     expect(stats.totalRows).toBeGreaterThan(0);
   });
 });

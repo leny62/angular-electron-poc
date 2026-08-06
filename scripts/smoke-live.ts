@@ -23,7 +23,7 @@
  * the most common failure (a typo'd slug) without putting secrets in scrollback.
  *
  * Options:
- *   BIZURI_API=https://api.bizuri.testing.eccellenza.tech   (default)
+ *   BIZURI_API=https://api.example.com   (required)
  *   BIZURI_BRANCH=<uuid>       override the branch from the login response
  *   BIZURI_DRY_RUN=1           hydrate and sell locally, but do NOT push
  *   BIZURI_DB=/path/to.sqlite  default is a temp file, deleted on exit
@@ -85,7 +85,6 @@ const ms = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}s` : `${n}ms`);
 // Config
 // ---------------------------------------------------------------------------
 
-const DEFAULT_API = 'https://api.bizuri.testing.eccellenza.tech';
 
 function readConfig() {
   const loaded = loadEnvLocal();
@@ -121,7 +120,7 @@ function readConfig() {
     email,
     password,
     subdomainSlug,
-    baseUrl: process.env['BIZURI_API'] ?? DEFAULT_API,
+    baseUrl: process.env['BIZURI_API'] || '',
     branchOverride: process.env['BIZURI_BRANCH'],
     dryRun: process.env['BIZURI_DRY_RUN'] === '1',
     dbPath: process.env['BIZURI_DB'],
@@ -144,9 +143,9 @@ async function main(): Promise<number> {
   console.log(c.dim(`Password       ${mask(config.password)}`));
   console.log(c.dim(`Contract       ${CONTRACT_VERSION}`));
 
-  if (config.baseUrl.includes('bizuri-api.eccellenza.tech') && !config.dryRun) {
-    // Production plus a live push would create a real sale against real
-    // customers' stock. Refuse rather than warn.
+  if (!config.baseUrl.includes('localhost') && !config.dryRun) {
+    // A live push against a remote server would create real sales against real
+    // stock. Refuse rather than warn unless it's a local mock.
     console.error(
       c.red('\nRefusing to run a live push against production.\n') +
         'Use the testing or staging host, or set BIZURI_DRY_RUN=1.\n',

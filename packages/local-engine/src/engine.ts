@@ -270,7 +270,11 @@ export function createLocalEngine(config: LocalEngineConfig): LocalEngine {
       });
     }
 
-    if (db && state.state === 'HYDRATING') void hydrateThenReady();
+    // When the engine started with credentials, unlock() already left it
+    // HYDRATING and this triggers the first pull. When the user signs in
+    // interactively through the UI, the engine is already READY and needs
+    // the same initial hydration to fill the catalog and stock tables.
+    if (db && (state.state === 'HYDRATING' || state.state === 'READY')) void hydrateThenReady();
     return session;
   }
 

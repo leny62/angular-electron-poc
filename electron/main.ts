@@ -14,9 +14,6 @@ import { createLocalEngine, type LocalEngine } from '@bizuri/local-engine';
 const DEV_PORT = 4200;
 const isDev = !app.isPackaged;
 
-const API_BASE_URL =
-  process.env['BIZURI_API'] ?? 'https://api.bizuri.testing.eccellenza.tech';
-
 let mainWindow: BrowserWindow | null = null;
 let engine: LocalEngine | null = null;
 
@@ -92,6 +89,13 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  const apiBaseUrl = process.env['BIZURI_API'];
+  if (!apiBaseUrl) {
+    console.error('FATAL: BIZURI_API is required. Set it in .env and restart.');
+    app.quit();
+    return;
+  }
+
   const dataDir = app.getPath('userData');
   mkdirSync(dataDir, { recursive: true });
 
@@ -105,7 +109,7 @@ app.whenReady().then(() => {
       mainWindow: mainWindow!,
       dbPath: join(dataDir, 'bizuri-local.sqlite'),
       deviceId: deviceId(dataDir),
-      apiBaseUrl: API_BASE_URL,
+      apiBaseUrl,
       isDev,
       devPort: DEV_PORT,
       machineSalt: loadMachineSalt(dataDir),
@@ -118,7 +122,7 @@ app.whenReady().then(() => {
       syncIntervalMs: 30_000,
     });
 
-    console.log(`[main] engine ready, api ${API_BASE_URL}`);
+    console.log(`[main] engine ready, api ${apiBaseUrl}`);
   } catch (err) {
     console.error('[main] engine failed to start:', err);
   }
