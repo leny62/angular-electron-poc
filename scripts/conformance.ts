@@ -99,15 +99,18 @@ function firstItem(body: unknown): Record<string, unknown> | null {
 // Main
 // ---------------------------------------------------------------------------
 
-const DEFAULT_API = 'https://api.bizuri.testing.eccellenza.tech';
-
 async function main(): Promise<number> {
   loadEnvLocal();
+
+  const baseUrl = process.env['BIZURI_API'];
+  if (!baseUrl) {
+    console.error('BIZURI_API is required. Set it in .env and retry.');
+    return 1;
+  }
 
   const email = process.env['BIZURI_EMAIL'];
   const password = process.env['BIZURI_PASSWORD'];
   const subdomainSlug = process.env['BIZURI_SLUG'];
-  const baseUrl = process.env['BIZURI_API'] ?? DEFAULT_API;
   const checkIdempotency = process.env['BIZURI_CHECK_IDEMPOTENCY'] === '1';
 
   if (!email || !password || !subdomainSlug) {
@@ -599,7 +602,7 @@ async function checkIdempotencyBehaviour(
   console.log(
     c.yellow(
       `\n   Note: this created a real sale in ${
-        process.env['BIZURI_API'] ?? DEFAULT_API
+        process.env['BIZURI_API'] ?? '(unknown)'
       }.\n   Void or ignore it as your process requires.`,
     ),
   );
