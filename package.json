@@ -1,15 +1,15 @@
 {
   "name": "angular-electron-poc",
   "version": "0.0.0",
-  "description": "Bizuri Secure IPC and Offline Operation \u2014 Proof of Concept",
+  "description": "Bizuri Secure IPC and Offline Operation — Proof of Concept",
   "main": "dist/electron/main.js",
   "private": true,
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
     "build": "ng build",
-    "build:packages": "tsc -b packages/local-store packages/local-engine packages/offline-http",
-    "clean:packages": "tsc -b packages/local-store packages/local-engine packages/offline-http --clean",
+    "build:packages": "tsc -b packages/local-engine packages/offline-http",
+    "clean:packages": "tsc -b packages/local-engine packages/offline-http --clean",
     "build:electron": "npm run build:packages && npm run typecheck:electron && node scripts/build-electron.mjs",
     "build:all": "npm run build:packages && npm run build && npm run typecheck:electron && node scripts/build-electron.mjs",
     "watch": "ng build --watch --configuration development",
@@ -44,6 +44,7 @@
     "@angular/platform-server": "^18.0.0",
     "@angular/router": "^18.0.0",
     "@angular/ssr": "^18.0.3",
+    "@bizuri/local-store": "file:../BIZURI-API-Contract/target/generated-sources/local-store/bizuri-local-store-1.2.35.tgz",
     "better-sqlite3-multiple-ciphers": "^12.11.1",
     "express": "^4.18.2",
     "rxjs": "~7.8.0",
@@ -103,6 +104,7 @@
     }
   },
   "workspaces": [
-    "packages/*"
+    "packages/local-engine",
+    "packages/offline-http"
   ]
 }

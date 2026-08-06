@@ -7,7 +7,7 @@
 
 import {
   rowToCustomer,
-  rowToReceiptSummary,
+  rowToReceipt,
   rowToSalesCatalogItem,
   rowToStockBalance,
   rowToTaxCategory,
@@ -18,7 +18,7 @@ import type {
   SaleLineRow,
   SalePaymentRow,
   SaleRow,
-  SalesCatalogRow,
+  SalesCatalogItemRow,
   StockBalanceRow,
   TaxCategoryRow,
 } from '@bizuri/local-store';
@@ -32,7 +32,7 @@ type Db = () => SqliteDatabase;
 
 export function buildReaders(db: Db): Record<string, (ctx: OperationContext) => OperationResult<unknown>> {
   return {
-    listSalesCatalog: makeReplicaList<SalesCatalogRow, unknown>(db, {
+    listSalesCatalog: makeReplicaList<SalesCatalogItemRow, unknown>(db, {
       table: 'sales_catalog',
       scope: ['tenant', 'branch'],
       baseWhere: 'deleted = 0',
@@ -121,7 +121,7 @@ export function buildReaders(db: Db): Record<string, (ctx: OperationContext) => 
       table: 'sales',
       scope: ['tenant'],
       filters: {
-        search: ['sale_number', 'client_name', 'client_phone'],
+        search: ['sale_number', 'client_full_name', 'client_phone'],
         equals: { status: 'status', branchId: 'branch_id', customerId: 'customer_id' },
         from: { fromDate: 'created_at' },
         to: { toDate: 'created_at' },
@@ -158,7 +158,7 @@ export function buildReaders(db: Db): Record<string, (ctx: OperationContext) => 
       filters: { search: ['receipt_number'] },
       orderBy: 'seq DESC',
       envelope: 'wrapped-page',
-      map: rowToReceiptSummary,
+      map: rowToReceipt,
     }),
 
     getReceipt: makeReplicaGet<ReceiptRow, unknown>(db, {
@@ -166,7 +166,7 @@ export function buildReaders(db: Db): Record<string, (ctx: OperationContext) => 
       scope: ['tenant'],
       lookup: [{ param: 'receiptNumber', column: 'receipt_number' }],
       envelope: 'wrapped-object',
-      map: rowToReceiptSummary,
+      map: rowToReceipt,
       notFoundLabel: 'Receipt',
     }),
   };

@@ -15,7 +15,6 @@ module.exports = {
   testMatch: ['**/__tests__/**/*.test.ts'],
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   moduleNameMapper: {
-    '^@bizuri/local-store$': '<rootDir>/local-store/src/index.ts',
     '^@bizuri/local-engine$': '<rootDir>/local-engine/src/index.ts',
     '^electron$': '<rootDir>/__mocks__/electron.ts',
   },
@@ -39,7 +38,6 @@ module.exports = {
           // cross-package imports.
           baseUrl: __dirname,
           paths: {
-            '@bizuri/local-store': ['local-store/src/index.ts'],
             '@bizuri/local-engine': ['local-engine/src/index.ts'],
           },
         },
@@ -47,7 +45,6 @@ module.exports = {
     ],
   },
   collectCoverageFrom: [
-    'local-store/src/**/*.ts',
     'local-engine/src/**/*.ts',
     'offline-http/src/**/*.ts',
     '!**/__tests__/**',

@@ -257,7 +257,7 @@ export function makeCreateSale(deps: CreateSaleDeps) {
       db.prepare(
         `INSERT INTO sales (
            tenant_id, branch_id, id, sale_number, status, customer_id,
-           client_name, client_tin, client_phone, credit_due_date, device_id,
+           client_full_name, client_tin, client_phone, credit_due_date, device_id,
            currency_code, subtotal, discount_total, tax_total, grand_total,
            amount_paid, change_given, balance_due, total_items, confirmed_at,
            created_at, idempotency_key, server_id, sync_state, local_seq

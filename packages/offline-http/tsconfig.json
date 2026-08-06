@@ -9,21 +9,8 @@
       "DOM"
     ],
     "experimentalDecorators": true,
-    "baseUrl": "..",
-    "paths": {
-      "@bizuri/local-store": [
-        "./local-store/dist/index.d.ts"
-      ],
-      "@bizuri/local-store/browser": [
-        "./local-store/dist/browser.d.ts"
-      ]
-    }
+    "baseUrl": ".."
   },
-  "references": [
-    {
-      "path": "../local-store"
-    }
-  ],
   "include": [
     "src/**/*.ts"
   ],

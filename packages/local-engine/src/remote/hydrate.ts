@@ -285,7 +285,7 @@ function upsertSalesCatalog(
        tax_category_rate, unit_of_measure_name, current_batch_id,
        updated_at, deleted, _pulled_at
      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-     ON CONFLICT(item_id, branch_id) DO UPDATE SET
+     ON CONFLICT(tenant_id, branch_id, item_id) DO UPDATE SET
        item_code = excluded.item_code,
        item_name = excluded.item_name,
        barcode = excluded.barcode,
@@ -331,7 +331,7 @@ function upsertStockBalance(
        has_batches, default_selling_price, discount, tax_category_name,
        tax_category_rate, batch_id, expired, updated_at, deleted, _pulled_at
      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-     ON CONFLICT(item_id, branch_id) DO UPDATE SET
+     ON CONFLICT(tenant_id, branch_id, item_id) DO UPDATE SET
        item_code = excluded.item_code,
        item_name = excluded.item_name,
        business_type = excluded.business_type,
@@ -375,7 +375,7 @@ function upsertTaxCategory(
        tenant_id, id, name, rate, description, status,
        created_at, updated_at, deleted, _pulled_at
      ) VALUES (?,?,?,?,?,?,?,?,?,?)
-     ON CONFLICT(id) DO UPDATE SET
+     ON CONFLICT(tenant_id, id) DO UPDATE SET
        name = excluded.name,
        rate = excluded.rate,
        description = excluded.description,
@@ -411,7 +411,7 @@ function upsertCustomer(
        tenant_id, id, name, tin, primary_phone, secondary_phone, email, address,
        status, created_at, updated_at, deleted, server_id, sync_state, local_seq
      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,0,?, 'SYNCED', 0)
-     ON CONFLICT(id) DO UPDATE SET
+     ON CONFLICT(tenant_id, id) DO UPDATE SET
        name = excluded.name,
        tin = excluded.tin,
        primary_phone = excluded.primary_phone,
